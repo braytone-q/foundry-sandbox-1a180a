@@ -1,3 +1,9 @@
+import shutil
+import subprocess
+
+import pytest
+
+
 def test_browser_assets_are_served_without_azure(app_bundle):
     client, _, gateway, _ = app_bundle
     page = client.get("/")
@@ -15,3 +21,10 @@ def test_source_script_markup_round_trips_as_data(client):
     response = client.post("/api/submissions", json={"description": source})
     assert response.json()["description"] == source
     assert source not in client.get("/").text
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="Node is needed for browser response-ordering checks")
+@pytest.mark.parametrize("case", ["refresh", "filters", "confirmation"])
+def test_browser_response_ordering(case):
+    result = subprocess.run(["node", "tests/browser_races.cjs", case], capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr

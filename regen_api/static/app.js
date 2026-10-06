@@ -7,7 +7,7 @@ const labels = {
   FLAG_FOR_REVIEW: "Flag for review", RUNNING: "Analysis running", FAILED: "Analysis failed",
   SUCCEEDED: "Analysis complete", APPROVE: "Approve", REJECT: "Reject", REQUEST_CLARIFICATION: "Request clarification"
 };
-let current = null, pendingReview = null, busy = false, offset = 0, total = 0, routeSequence = 0;
+let current = null, pendingReview = null, busy = false, offset = 0, total = 0, routeSequence = 0, queueSequence = 0;
 const pageSize = 25;
 
 // All record content is untrusted. Build elements and assign text, never HTML.
@@ -80,8 +80,7 @@ function showDetail(id) { location.hash = `submission/${encodeURIComponent(id)}`
 
 async function renderRoute() {
   // A confirmation belongs to the viewed record, never to a later navigation.
-  pendingReview = null;
-  if ($("#review-dialog").open) $("#review-dialog").close();
+  cancelConfirmation();
   const sequence = ++routeSequence;
   const hash = location.hash.slice(1) || "submit";
   const view = hash.startsWith("submission/") ? "detail" : hash === "history" ? "history" : hash === "queue" ? "queue" : "submit";
@@ -111,18 +110,20 @@ async function renderRoute() {
 }
 
 async function loadQueue(sequence = routeSequence) {
+  const requestSequence = ++queueSequence, requestOffset = offset, requestStatus = $("#status-filter").value;
+  const stillCurrent = () => sequence === routeSequence && requestSequence === queueSequence;
   $("#queue-list").replaceChildren(empty("Loading activities…", "Fetching the latest local records."));
   $("#previous-page").disabled = true; $("#next-page").disabled = true;
-  const params = new URLSearchParams({limit: pageSize, offset});
+  const params = new URLSearchParams({limit: pageSize, offset: requestOffset});
   for (const [parameter, selector] of [["status", "#status-filter"], ["recommendation", "#recommendation-filter"], ["analysis_state", "#state-filter"]]) {
     if ($(selector).value) params.set(parameter, $(selector).value);
   }
   try {
     const page = await api(`/api/submissions?${params}`);
-    if (sequence !== routeSequence) return;
+    if (!stillCurrent()) return;
     total = page.total;
     $("#queue-total").textContent = total.toLocaleString();
-    $("#queue-total-label").textContent = $("#status-filter").value === "" ? "activities awaiting review" : "matching activities";
+    $("#queue-total-label").textContent = requestStatus === "" ? "activities awaiting review" : "matching activities";
     const entries = page.items.map((record) => {
       const entry = node("a", null, "queue-item"); entry.href = `#submission/${record.id}`;
       const top = node("div", null, "queue-item-top"), title = node("div");
@@ -134,10 +135,10 @@ async function loadQueue(sequence = routeSequence) {
       return entry;
     });
     $("#queue-list").replaceChildren(...(entries.length ? entries : [empty("No activities here yet", "Submit an activity or adjust your filters to see more records.")]));
-    $("#page-label").textContent = total ? `${offset + 1}–${Math.min(offset + pageSize, total)} of ${total}` : "0 activities";
-    $("#previous-page").disabled = offset === 0;
-    $("#next-page").disabled = offset + pageSize >= total;
-  } catch (error) { if (sequence === routeSequence) $("#queue-list").replaceChildren(empty("Could not load activities", error.message)); }
+    $("#page-label").textContent = total ? `${requestOffset + 1}–${Math.min(requestOffset + pageSize, total)} of ${total}` : "0 activities";
+    $("#previous-page").disabled = requestOffset === 0;
+    $("#next-page").disabled = requestOffset + pageSize >= total;
+  } catch (error) { if (stillCurrent()) $("#queue-list").replaceChildren(empty("Could not load activities", error.message)); }
 }
 function titleFor(record) {
   const activity = record.latest_attempt?.analysis?.activity_type;
@@ -145,6 +146,7 @@ function titleFor(record) {
 }
 
 function renderDetail() {
+  cancelConfirmation();
   const record = current, attempt = record.latest_attempt, analysis = attempt?.analysis;
   const container = $("#detail-content"); container.replaceChildren();
   const back = node("a", "← Back to review queue", "back-link"); back.href = "#queue"; container.append(back);
@@ -212,7 +214,7 @@ function reviewCard(record) {
       if (busy || !form.reportValidity()) return;
       const reviewer = $("#reviewer-name").value.trim(), notes = $("#review-notes").value.trim();
       if (!reviewer || !notes) { notice("Enter a reviewer name and meaningful review notes.", true); return; }
-      pendingReview = {action, reviewer_name: reviewer, notes, expected_version: record.version};
+      pendingReview = {recordId: record.id, action, reviewer_name: reviewer, notes, expected_version: record.version};
       $("#confirm-action").textContent = `Human action: ${labels[action]}`;
       $("#confirm-reviewer").textContent = `Reviewer: ${reviewer}`;
       $("#confirm-notes").textContent = notes;
@@ -259,12 +261,20 @@ function historyCard(record) {
 }
 async function refresh() {
   if (!current || busy) return;
-  try { current = await api(path()); renderDetail(); }
-  catch (error) { notice(error.message, true); }
+  const id = current.id, sequence = routeSequence;
+  try {
+    const record = await api(path(id));
+    if (sequence !== routeSequence || current?.id !== id || record.version < current.version) return;
+    current = record; renderDetail();
+  } catch (error) { if (sequence === routeSequence && current?.id === id) notice(error.message, true); }
 }
-async function mutate(action, body) {
+function cancelConfirmation() {
+  pendingReview = null;
+  if ($("#review-dialog").open) $("#review-dialog").close();
+}
+async function mutate(action, body, id = current?.id) {
   if (busy || !current) return;
-  const id = current.id;
+  if (current.id !== id) { notice("The viewed record changed. Inspect it before confirming a new action.", true); return; }
   setBusy(true); notice(action === "reviews" ? "Saving your human review…" : "Your source is saved before analysis. Checking the approved knowledge source…");
   try {
     const record = await api(`${path(id)}/${action}`, body);
@@ -298,7 +308,7 @@ $("#cancel-review").addEventListener("click", () => { pendingReview = null; $("#
 $("#review-dialog").addEventListener("cancel", () => { pendingReview = null; });
 $("#confirmation-form").addEventListener("submit", async (event) => {
   event.preventDefault(); if (busy || !pendingReview) return;
-  const body = pendingReview; pendingReview = null; $("#review-dialog").close(); await mutate("reviews", body);
+  const {recordId, ...body} = pendingReview; cancelConfirmation(); await mutate("reviews", body, recordId);
 });
 window.addEventListener("hashchange", renderRoute);
 renderRoute();
