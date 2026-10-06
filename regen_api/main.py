@@ -1,10 +1,12 @@
 import sqlite3
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, Query, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from .foundry import FoundryGateway
 from .schemas import (AttemptState, Recommendation, RetryInput, ReviewInput, RevisionInput,
@@ -51,6 +53,12 @@ def create_app(settings=None, gateway=None):
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["Cache-Control"] = "no-store"
+        if request.url.path == "/":
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self'; script-src 'self'; style-src 'self'; "
+                "img-src 'self'; connect-src 'self'; object-src 'none'; "
+                "base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+            )
         return response
 
     @app.exception_handler(NotFound)
@@ -95,5 +103,12 @@ def create_app(settings=None, gateway=None):
     @app.post("/api/submissions/{id}/reviews", response_model=SubmissionRecord, status_code=201)
     def review(id: str, input: ReviewInput):
         return service.review(id, input)
+
+    static = Path(__file__).parent / "static"
+    app.mount("/static", StaticFiles(directory=static), name="static")
+
+    @app.get("/", include_in_schema=False)
+    def interface():
+        return FileResponse(static / "index.html")
 
     return app
