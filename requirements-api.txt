@@ -1,3 +1,5 @@
 -r requirements.txt
+# Projects 2.1.0 imports httpx; OpenAI 3 switches to httpx2.
+openai>=2.8.0,<3
 fastapi>=0.115,<1
 uvicorn>=0.30,<1
