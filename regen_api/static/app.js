@@ -79,6 +79,9 @@ function field(label, id, tag = "input", maxLength) {
 function showDetail(id) { location.hash = `submission/${encodeURIComponent(id)}`; }
 
 async function renderRoute() {
+  // A confirmation belongs to the viewed record, never to a later navigation.
+  pendingReview = null;
+  if ($("#review-dialog").open) $("#review-dialog").close();
   const sequence = ++routeSequence;
   const hash = location.hash.slice(1) || "submit";
   const view = hash.startsWith("submission/") ? "detail" : hash === "history" ? "history" : hash === "queue" ? "queue" : "submit";

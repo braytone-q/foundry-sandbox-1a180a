@@ -96,6 +96,7 @@ class FoundryGateway:
         try:
             response = self._get_client().responses.create(
                 input=[{"role": "user", "content": description}],
+                tool_choice="required",
                 extra_body={"agent_reference": {"name": self.settings.agent_name,
                     "version": self.settings.agent_version, "type": "agent_reference"}},
             )

@@ -107,3 +107,18 @@ def test_request_boundaries_reject_blank_extra_or_authoritative_inputs(model, da
     from regen_api import schemas
     with pytest.raises(ValidationError):
         getattr(schemas, model).model_validate(data)
+def test_gateway_requires_knowledge_retrieval_before_analysis():
+    from regen_api.foundry import FoundryGateway
+    from regen_api.settings import Settings
+    calls = []
+
+    class Responses:
+        def create(self, **kwargs):
+            calls.append(kwargs)
+            return response()
+
+    gateway = FoundryGateway(Settings())
+    gateway._client = NS(responses=Responses())
+    result = gateway.analyze("We planted seedlings.")
+    assert result.analysis.recommendation == "READY_FOR_HUMAN_REVIEW"
+    assert calls[0]["tool_choice"] == "required"
