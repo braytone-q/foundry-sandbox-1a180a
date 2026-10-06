@@ -83,3 +83,6 @@ Desktop.ini
 ## Node (just in case mixed project)
 node_modules/
 # End
+runtime/
+.superpowers/
+.pytest_cache/
