@@ -87,7 +87,7 @@ async function renderRoute() {
   const hash = location.hash.slice(1) || "submit";
   const view = hash.startsWith("submission/") ? "detail" : hash === "history" ? "history" : hash === "queue" ? "queue" : "submit";
   revisionPicker?.clear(); revisionPicker = null;
-  if (view !== "submit") submissionPicker.clear();
+  if (view !== "submit") submissionPicker.suspend(); else submissionPicker.resume();
   document.querySelectorAll(".view").forEach((element) => { element.hidden = true; });
   $(view === "history" ? "#queue-view" : `#${view}-view`).hidden = false;
   document.querySelectorAll("[data-nav]").forEach((link) => {

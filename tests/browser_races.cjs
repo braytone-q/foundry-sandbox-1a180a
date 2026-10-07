@@ -2,6 +2,7 @@
 const fs = require("node:fs");
 const vm = require("node:vm");
 const assert = require("node:assert/strict");
+const {File} = require("node:buffer");
 const source = fs.readFileSync("regen_api/static/app.js", "utf8").replace(/renderRoute\(\);\s*$/, "");
 
 function harness() {
@@ -24,7 +25,7 @@ function harness() {
   }
   const context = vm.createContext({document: {querySelector: element, querySelectorAll: () => [],
     createElement: (tag) => new Element(tag)}, window: {addEventListener() {}},
-    location: {hash: "#submission/A"}, URLSearchParams, URL, FormData, console});
+    location: {hash: "#submission/A"}, URLSearchParams, URL, FormData, File, console});
   const run = (code) => vm.runInContext(code, context);
   run(fs.readFileSync("regen_api/static/images.js", "utf8")); run(source);
   return {element, run};
@@ -94,7 +95,23 @@ async function confirmationStaysBoundToRecord() {
   assert.equal(h.run("posts.length"), 0, "A confirmation must never act on a different current record");
 }
 
-const checks = {refresh: refreshCannotRedirectReview, filters: latestFilterWins, confirmation: confirmationStaysBoundToRecord};
+async function navigationRetainsImageDraft() {
+  const h = harness();
+  await h.run(`
+    $('#description').value='Draft with photograph';
+    var photo=new File([new Uint8Array([1])], 'photo.png', {type:'image/png'});
+    submissionPicker.add([photo]);
+    api=async()=>({total:0,items:[]});
+    location.hash='#queue'; renderRoute();
+  `);
+  assert.equal(h.run("submissionPicker.files.length"), 1, "Navigation must retain selected draft images");
+  await h.run("location.hash='#submit'; renderRoute();");
+  assert.equal(h.element("#description").value, "Draft with photograph");
+  assert.equal(h.run("submissionBody($('#description').value, submissionPicker.files) instanceof FormData"), true);
+  assert.equal(h.run("submissionBody($('#description').value, submissionPicker.files).getAll('images')[0].name"), "photo.png");
+}
+
+const checks = {refresh: refreshCannotRedirectReview, filters: latestFilterWins, confirmation: confirmationStaysBoundToRecord, image_draft: navigationRetainsImageDraft};
 const check = checks[process.argv[2]];
 if (!check) throw new Error("Choose refresh, filters or confirmation");
 check().then(() => console.log(`PASS ${process.argv[2]}`)).catch((error) => { console.error(error); process.exitCode = 1; });

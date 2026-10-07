@@ -37,12 +37,20 @@ class ImagePicker {
   }
   remove(index) {
     const [entry] = this.entries.splice(index, 1);
-    if (entry) URL.revokeObjectURL(entry.url);
+    if (entry?.url) URL.revokeObjectURL(entry.url);
     this.error.hidden = true; this.render();
   }
   clear() {
-    this.entries.forEach(entry => URL.revokeObjectURL(entry.url)); this.entries = [];
+    this.entries.forEach(entry => { if (entry.url) URL.revokeObjectURL(entry.url); }); this.entries = [];
     this.input.value = ""; this.error.hidden = true; this.render();
+  }
+  suspend() {
+    this.entries.forEach(entry => { if (entry.url) URL.revokeObjectURL(entry.url); entry.url = null; });
+    this.previews.replaceChildren();
+  }
+  resume() {
+    this.entries.forEach(entry => { if (!entry.url) entry.url = URL.createObjectURL(entry.file); });
+    this.render();
   }
   render() {
     this.count.textContent = `${this.existing + this.entries.length} / 20 images${this.existing ? ` · ${this.existing} already saved` : ""}`;
