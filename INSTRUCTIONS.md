@@ -117,16 +117,14 @@ Example API requests (these make live analysis calls):
 
 ```bash
 curl http://127.0.0.1:8000/api/health
-curl -X POST http://127.0.0.1:8000/api/submissions \
-  -H 'Content-Type: application/json' \
-  -d '{"description":"We watered seedlings in the community nursery today."}'
 curl 'http://127.0.0.1:8000/api/submissions?status=ALL&limit=25&offset=0'
 ```
 
 The returned `id` identifies the record. Send its current integer `version` as
 `expected_version` when calling `/api/submissions/{id}/analyze`, `/revisions`, or
 `/reviews`. Review bodies also contain `action`, `reviewer_name`, and `notes`;
-revision bodies also contain the complete `description`. OpenAPI includes all
+Create and revision bodies require `device_location` as well as the complete
+`description`; see the current coordinate schema below. OpenAPI includes all
 request and response schemas. Analysis is synchronous, with a 90-second SDK
 request timeout and no automatic SDK retries; credential acquisition can add time.
 `/api/health` checks local readiness and does not test Azure connectivity.
@@ -188,15 +186,19 @@ the claimed date, place, species or exact quantity. Image receipts mean supplied
 to a completed analysis, not authenticated or approved. Approved Search rules
 still govern recommendations, and a person must make the review decision.
 
-Image routes use multipart forms (do not manually set the multipart boundary):
+Image routes use multipart forms (do not manually set the multipart boundary).
+`device-fix.json` must contain a fresh fix from the client device, as documented
+below; use the browser interface for automatic capture:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/api/submissions/with-images \
   -F 'description=Describe the actual work and the supplied photographs.' \
+  -F 'device_location=<device-fix.json' \
   -F 'images=@photo-1.jpg' -F 'images=@photo-2.png'
 # Append files in a new revision, using the current saved version:
 curl -X POST http://127.0.0.1:8000/api/submissions/SUBMISSION_ID/revisions/with-images \
   -F 'description=Complete updated account.' -F 'expected_version=2' \
+  -F 'device_location=<device-fix.json' \
   -F 'images=@photo-3.webp'
 ```
 
@@ -204,3 +206,56 @@ Repeat `images` for each file. Originals are served by `GET /api/images/{id}`.
 Existing JSON create, revision, retry and human-review routes remain available.
 Runtime image data is excluded from Git along with the database. Keep this
 prototype bound to loopback and use it on a trusted computer.
+
+## Image consistency and required device coordinates
+
+The app first inspects actual pixels with the existing `gpt-5-mini` deployment.
+Every supplied image gets a visible-content summary and a comparison with the
+reported activity: SUPPORTS, UNRELATED, CONTRADICTS or UNCLEAR. These observations
+then go to agent `regen`11 for approved Search rule checks. An unrelated or
+contradicting image gives MISMATCH; unclear evidence gives INCONCLUSIVE. Both force
+FLAG_FOR_REVIEW even if the rule-checking output suggests readiness. A recruitment
+poster containing trees is still a poster, not proof of the reported planting
+event. The displayed activity type and quantity are explicitly reported claims.
+
+Each analysis attempt preserves its own inspection. Old attempts have no new
+inspection result; Retry Analysis applies the new pipeline to the same source
+and originals. Visual support does not authenticate date, exact counts, identity
+or activity site. A human still decides whether to approve or reject. Inspection
+or Search failure saves a failed attempt and keeps evidence available for retry.
+
+The browser automatically requests a fresh device location when saving a new
+activity or revision. Allow the site's location permission and enable device
+location services. Permission denial, missing support, failure or timeout blocks
+submission and preserves the draft. Capture uses high accuracy and no cached fix.
+The app also stops waiting for an unanswered permission prompt after 20 seconds.
+Use localhost here; shared hosting would need a secure HTTPS context.
+
+JSON create/revision bodies require this additional object; multipart uses the
+JSON object as the `device_location` text field:
+
+```json
+{
+  "latitude": -1.234567,
+  "longitude": 36.234567,
+  "accuracy_m": 12.0,
+  "captured_at": "FRESH_DEVICE_FIX_ISO_TIMESTAMP_WITH_TIMEZONE",
+  "source": "browser_geolocation"
+}
+```
+
+Values above are illustrative placeholders. API clients must acquire their own
+fresh device fix. Latitude and longitude must be finite numbers within [-90,90]
+and [-180,180], accuracy must be nonnegative, and capture time must be timezone
+aware, no more than five minutes old or 30 seconds in the future.
+
+Device coordinates, reported accuracy and capture time are stored by source
+revision and displayed separately from the reported activity location. Retries
+reuse that snapshot. Historic submissions retain missing coordinates rather than
+inventing a retrospective location. Precise device coordinates stay in local
+storage and are not sent to Foundry. Browser-provided coordinates are not attested
+proof of where an image was taken or an activity occurred.
+
+`REGEN_IMAGE_MODEL` selects the vision deployment (default `gpt-5-mini`). The two
+model calls may take longer than the previous single call; the SDK request timeout
+applies to each call. Keep one server process on the local database.

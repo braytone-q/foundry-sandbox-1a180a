@@ -40,9 +40,14 @@ def parse_response(response, evidence_received=None) -> AnalysisResult:
         raise AnalysisFailure("INVALID_ANALYSIS", "The agent returned an invalid analysis. Retry analysis.")
     content = [part for part in messages[0].content if part.type == "output_text"]
     try:
-        analysis = Analysis.model_validate(json.loads("".join(part.text for part in content)))
-        if not evidence_received and analysis.evidence_received:
+        data = json.loads("".join(part.text for part in content))
+        if not isinstance(data, dict) or not isinstance(data.get("evidence_received"), list):
+            raise ValueError("The receipt field must be present as an array")
+        if not evidence_received and data["evidence_received"]:
             raise ValueError("No images were supplied")
+        # This field is server-owned. Model-generated objects/claims never become receipts.
+        data["evidence_received"] = list(evidence_received or [])
+        analysis = Analysis.model_validate(data)
     except (ValueError, TypeError, ValidationError) as exc:
         raise AnalysisFailure("INVALID_ANALYSIS", "The agent returned an invalid analysis. Retry analysis.") from exc
     # Receipt truth belongs to the input boundary, not to model-generated prose.
@@ -129,7 +134,8 @@ class FoundryGateway:
                     "Keep activity_type and quantity as reported facts; compare those claims with "
                     "these visible observations. Mismatched or inconclusive evidence requires "
                     "FLAG_FOR_REVIEW. Receipt does not authenticate date, location, species or counts. "
-                    "Only the reported description belongs under evidence_reported. Apply retrieved "
+                    "Only the reported description belongs under evidence_reported. Return "
+                    "evidence_received as strings or an empty array, never inspection objects. Apply retrieved "
                     "programme rules and preserve the exact14 output and human decision boundaries.\n" +
                     assessment.model_dump_json()
                 )})

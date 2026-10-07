@@ -92,3 +92,17 @@ def test_failed_second_call_keeps_source_and_originals(app_bundle):
     assert record["latest_attempt"]["analysis"] is None
     assert "private" not in record["latest_attempt"]["failure_message"]
     assert client.get(record["images"][0]["url"]).content==picture()
+
+
+def test_saved_agent_uses_supported_request_and_actual_receipt_strings(tmp_path):
+    gateway=FoundryGateway(Settings())
+    def call(**kwargs):
+        if 'model' in kwargs:return vision_response()
+        # Foundry rejects runtime text-format overrides when agent_reference is supplied.
+        assert 'text' not in kwargs
+        return response(payload() | {'evidence_received':[{'filename':'invented.jpg','verified':True}]})
+    gateway._client=NS(responses=NS(create=call))
+    result=gateway.analyze('Today we planted 300 trees',descriptors(tmp_path))
+    assert result.analysis.recommendation=='FLAG_FOR_REVIEW'
+    assert result.analysis.evidence_received==['Image 1: test-0.png']
+    assert len(result.analysis.model_dump())==14

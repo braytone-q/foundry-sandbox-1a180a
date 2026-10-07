@@ -53,8 +53,9 @@ def test_normalized_image_orients_resizes_flattens_and_preserves_original(tmp_pa
     assert hashlib.sha256(path.read_bytes()).hexdigest() == digest
 
 
-def test_received_evidence_is_canonical_input_receipt():
-    data = payload() | {"evidence_received": ["20 pictures prove date and quantity"]}
+@pytest.mark.parametrize('claimed',[['20 pictures prove date and quantity'],[{'filename':'invented.jpg','verified':True}]])
+def test_received_evidence_is_canonical_input_receipt(claimed):
+    data = payload() | {"evidence_received": claimed}
     result = parse_response(response(data), evidence_received=["Image 1: planted.png"])
     assert result.analysis.evidence_received == ["Image 1: planted.png"]
     assert result.analysis.evidence_reported == ["3 photos reported"]
