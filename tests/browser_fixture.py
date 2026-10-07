@@ -9,7 +9,7 @@ from tests.conftest import ControlledGateway
 
 
 class BrowserGateway(ControlledGateway):
-    def analyze(self, description):
+    def analyze(self, description, images=None):
         if "QA failure" in description:
             raise AnalysisFailure("TIMEOUT", "Controlled QA timeout. Source is saved; retry analysis.")
         from tests.test_contract import payload
@@ -17,7 +17,7 @@ class BrowserGateway(ControlledGateway):
         if "QA clarification" in description:
             self.data.update(recommendation="NEEDS_CLARIFICATION", missing_information=["precise location"],
                              location=None, clarification_question="Where did the planting take place?")
-        return super().analyze(description)
+        return super().analyze(description, images)
 
 
 def create_app():

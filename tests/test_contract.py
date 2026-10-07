@@ -29,7 +29,7 @@ def test_accepts_existing_analysis_contract():
 
 @pytest.mark.parametrize("changes", [
     {"recommendation": "APPROVED"}, {"quantity": True}, {"quantity": "150"},
-    {"evidence_received": ["photos inspected"]}, {"extra_decision": "APPROVE"},
+    {"evidence_received": [123]}, {"extra_decision": "APPROVE"},
     {"missing_information": ["location"]}, {"inconsistencies": ["100 versus 150"]},
     {"recommendation": "NEEDS_CLARIFICATION", "clarification_question": "Where?"},
     {"reason": "  "}, {"quantity": float("nan")},

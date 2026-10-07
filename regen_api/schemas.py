@@ -34,8 +34,6 @@ class Analysis(StrictModel):
     def coherent_recommendation(self):
         if not self.reason.strip():
             raise ValueError("A reason is required")
-        if self.evidence_received:
-            raise ValueError("Text-only input cannot contain received evidence")
         if self.recommendation == "READY_FOR_HUMAN_REVIEW" and (
             self.missing_information or self.inconsistencies or self.clarification_question is not None
         ):
