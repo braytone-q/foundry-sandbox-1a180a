@@ -18,9 +18,14 @@ verification output contract.
 
 The existing Foundry project client calls gpt-5-mini directly with a question
 instruction set. A strict typed first response determines whether approved knowledge
-is needed, using the question and history. It answers only general topics directly.
-Explicit Re-gen/Green Merit mentions always force the knowledge route even if the
-model routes incorrectly. Programme questions, mixed questions and ambiguous
+is needed, using the question and history. It answers general topics and documented
+application facts directly, using a maintained project briefing for the latter.
+The typed `uses_project_brief` flag allows a briefing-only answer for project
+purpose, screens, images, location, storage and the local review workflow. Unknown
+product facts are acknowledged as undocumented, without activity-verification
+flags. Explicit Re-gen/Green Merit mentions force Search for drafts classified
+as ordinary general knowledge. `needs_knowledge=true` always forces Search,
+including mixed questions that also use the briefing. Programme questions and ambiguous
 programme follow-ups require a fresh completed Search using the existing connection
 and index. General questions use general knowledge without irrelevant Search
 citations; do not present general

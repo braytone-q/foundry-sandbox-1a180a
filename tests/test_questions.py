@@ -14,7 +14,8 @@ def answer_response(text="Nairobi is the capital of Kenya."):
     return result
 
 
-def use_question_gateway(bundle, reply=None, needs_knowledge=False):
+def use_question_gateway(bundle, reply=None, needs_knowledge=False, uses_project_brief=False,
+                         draft_answer='Nairobi is the capital of Kenya.'):
     _, _, gateway, settings = bundle
     real = FoundryGateway(settings)
     requests = []
@@ -25,7 +26,8 @@ def use_question_gateway(bundle, reply=None, needs_knowledge=False):
         if 'text' in kwargs:
             import json
             draft = answer_response(json.dumps({'needs_knowledge': needs_knowledge,
-                'answer': '' if needs_knowledge else 'Nairobi is the capital of Kenya.'}))
+                'uses_project_brief': uses_project_brief,
+                'answer': '' if needs_knowledge else draft_answer}))
             draft.output.pop(0)
             return draft
         return reply or answer_response()
@@ -68,6 +70,28 @@ def test_explicit_regen_question_uses_search_even_if_router_says_general(app_bun
     result = client.post('/api/questions', json={'question': 'Does Re-gen require exact species names?'})
     assert result.status_code == 200 and result.json()['knowledge_searched']
     assert len(calls) == 2 and calls[1]['tool_choice'] == 'required'
+
+
+def test_documented_project_answers_do_not_acquire_unrelated_rule_citations(app_bundle):
+    client, _, _, _ = app_bundle
+    calls, connections = use_question_gateway(app_bundle, uses_project_brief=True,
+        draft_answer='The app compares uploaded image pixels with the reported description.')
+    result = client.post('/api/questions', json={'question': 'How does Re-gen check uploaded pictures?'})
+    assert result.status_code == 200, result.text
+    assert result.json()['answer'] == 'The app compares uploaded image pixels with the reported description.'
+    assert not result.json()['knowledge_searched'] and result.json()['citations'] == []
+    assert len(calls) == 1 and connections == []
+
+
+def test_mixed_project_and_policy_questions_still_require_approved_search(app_bundle):
+    client, _, _, _ = app_bundle
+    calls, connections = use_question_gateway(app_bundle, needs_knowledge=True, uses_project_brief=True,
+        reply=answer_response('Exact species names are optional; the app accepts up to 20 images.'))
+    result = client.post('/api/questions', json={'question': 'How many images does Re-gen accept, and is an exact species name mandatory?'})
+    assert result.status_code == 200, result.text
+    assert result.json()['knowledge_searched']
+    assert len(calls) == 2 and calls[1]['tool_choice'] == 'required'
+    assert connections == ['regen-verification-search-mi']
 
 
 @pytest.mark.parametrize('body', [
@@ -122,8 +146,9 @@ def test_question_citations_are_safe_and_not_manufactured(app_bundle):
 
 
 @pytest.mark.parametrize('draft', [
-    'not JSON', '{"needs_knowledge":"false","answer":"Hello"}',
-    '{"needs_knowledge":false,"answer":" "}',
+    'not JSON', '{"needs_knowledge":"false","uses_project_brief":false,"answer":"Hello"}',
+    '{"needs_knowledge":false,"uses_project_brief":"true","answer":"Hello"}',
+    '{"needs_knowledge":false,"uses_project_brief":false,"answer":" "}',
     '{"needs_knowledge":true}',
 ])
 def test_invalid_routing_reply_never_reaches_search_or_becomes_an_answer(app_bundle, draft):
@@ -152,6 +177,7 @@ def test_unfinished_assistant_items_never_become_answers(app_bundle, stage, stat
         calls.append(kwargs)
         if 'text' in kwargs:
             reply = answer_response(json.dumps({'needs_knowledge': stage != 'draft_general',
+                                               'uses_project_brief': False,
                                                'answer': 'General answer' if stage == 'draft_general' else ''}))
             reply.output.pop(0)
             if stage.startswith('draft'):reply.output[-1].status = status

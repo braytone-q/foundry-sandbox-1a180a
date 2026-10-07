@@ -268,9 +268,20 @@ then follow up in the same conversation. Questions do not create activity record
 request device location, inspect stored images, or make human review decisions.
 Use **Submit Activity** to supply work and images for an assessment.
 
+Ask Re-gen also receives a maintained briefing of the implemented project:
+its purpose, navigation screens, submission/review workflow, pixel inspection,
+image limits, required location capture, storage and current local-only scope.
+It combines those application facts with the verification agent's approved
+Search knowledge when answering project questions and follow-ups. The briefing
+does not define new programme requirements; undocumented project facts must be
+acknowledged instead of invented. Update the briefing in `regen_api/questions.py`
+when implemented capabilities change.
+
 The question path uses the existing Foundry deployment directly with a separate
-instruction set. It automatically distinguishes general questions from programme
-questions. Programme questions and their relevant follow-ups retrieve fresh approved
+instruction set. A typed first response distinguishes everyday questions,
+application facts and programme-policy questions. Application answers use the
+maintained briefing without unrelated rule citations. Programme and mixed
+questions and their relevant follow-ups retrieve fresh approved
 Re-gen Search knowledge. Retrieved programme rules govern policy answers; ordinary
 advice is general knowledge and must not be represented as programme policy.
 It cannot check live news, weather or other current facts with this configuration.
@@ -288,7 +299,10 @@ curl http://127.0.0.1:8000/api/questions \
 ```
 
 Successful answers contain `answer`, `response_id`, `citations` and
-`knowledge_searched` (false for general knowledge, true for programme retrieval).
+`knowledge_searched` (false for general knowledge or project-briefing answers,
+true when approved Search retrieval occurred).
+The opt-in live project checks make model calls against the running app:
+`.venv/bin/python -m pytest -q -s tests/live_project_questions.py`.
 Missing required Search, incomplete or invalid answers, authentication
 and provider failures return a sanitized502 error. No question or activity is
 written to SQLite. The browser retains a failed question draft for retry.
