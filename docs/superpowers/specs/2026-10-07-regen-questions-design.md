@@ -17,10 +17,13 @@ This avoids routing questions through the activity form or changing the existing
 verification output contract.
 
 The existing Foundry project client calls gpt-5-mini directly with a question
-instruction set and the existing Azure AI Search connection/index. Require a
-completed Search call every turn so Re-gen verification requirements come from
-approved knowledge, including ambiguous follow-ups. General questions may use
-general knowledge when indexed material is irrelevant; do not present general
+instruction set. A strict typed first response determines whether approved knowledge
+is needed, using the question and history. It answers only general topics directly.
+Explicit Re-gen/Green Merit mentions always force the knowledge route even if the
+model routes incorrectly. Programme questions, mixed questions and ambiguous
+programme follow-ups require a fresh completed Search using the existing connection
+and index. General questions use general knowledge without irrelevant Search
+citations; do not present general
 knowledge as programme policy or claim live web access/current verification.
 Unknown programme rules are explicitly unavailable and require human review.
 Do not approve, reject, verify, reward, issue points/tokens/payments, or pretend
@@ -34,8 +37,9 @@ empty, max12 alternating user/assistant messages in complete pairs). Each
 historical message is nonblank and max12000 characters; combined history is
 max24000 characters. No other fields, location, image or decision data accepted.
 QuestionAnswer: answer (nonblank, max12000 characters), response_id (nullable),
-citations (HTTPS source links only), knowledge_searched=true. Require completed
-provider response, completed Search output and one assistant text message.
+citations (HTTPS source links only), knowledge_searched (true only on the Search
+route). Require completed provider responses and one assistant text message;
+the knowledge route additionally requires completed Search output.
 Reject incomplete/blank/ungrounded replies; return a sanitized502 error without
 claiming any activity was saved. Provider timeout/authentication errors use
 question-specific messages. No new Python dependencies or cloud agent versions.
@@ -60,8 +64,9 @@ No geolocation prompt occurs for questions.
 
 ## Verification
 
-Regression tests cover free-text general/programme answers, fresh Search every
-turn, valid bounded history, safe citations, provider failures, blank replies,
+Regression tests cover free-text general/programme answers, fresh Search for
+programme turns, forced explicit programme retrieval, invalid route JSON,
+valid bounded history, safe citations, provider failures, blank replies,
 unknown fields, and no submission count/history changes. Executable browser
 tests cover send/follow-up, duplicate submission, failure draft retention,
 navigation during a reply, reset and safe text. Run the existing suite unchanged.

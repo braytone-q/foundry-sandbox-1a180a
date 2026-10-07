@@ -136,7 +136,7 @@ class QuestionAnswer(StrictModel):
     answer: ConversationText
     response_id: str | None
     citations: list[Citation]
-    knowledge_searched: Literal[True] = True
+    knowledge_searched: bool
 
     @model_validator(mode="after")
     def meaningful_answer(self):

@@ -259,3 +259,50 @@ proof of where an image was taken or an activity occurred.
 `REGEN_IMAGE_MODEL` selects the vision deployment (default `gpt-5-mini`). The two
 model calls may take longer than the previous single call; the SDK request timeout
 applies to each call. Keep one server process on the local database.
+
+## General questions and Ask Re-gen
+
+Open `http://127.0.0.1:8000/#ask`, or select **Ask Re-gen** in the sidebar.
+Ask everyday questions, conservation questions, or questions about the programme,
+then follow up in the same conversation. Questions do not create activity records,
+request device location, inspect stored images, or make human review decisions.
+Use **Submit Activity** to supply work and images for an assessment.
+
+The question path uses the existing Foundry deployment directly with a separate
+instruction set. It automatically distinguishes general questions from programme
+questions. Programme questions and their relevant follow-ups retrieve fresh approved
+Re-gen Search knowledge. Retrieved programme rules govern policy answers; ordinary
+advice is general knowledge and must not be represented as programme policy.
+It cannot check live news, weather or other current facts with this configuration.
+It cannot approve, reject, verify or reward activities. The verification agent
+`regen`11 and its structured analysis contract remain separate.
+
+```bash
+curl http://127.0.0.1:8000/api/questions \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"What is the capital of Kenya?"}'
+# Follow up with complete user/assistant pairs from the previous answer:
+curl http://127.0.0.1:8000/api/questions \
+  -H 'Content-Type: application/json' \
+  -d '{"question":"And what is its country?","history":[{"role":"user","content":"What is the capital of Kenya?"},{"role":"assistant","content":"Nairobi."}]}'
+```
+
+Successful answers contain `answer`, `response_id`, `citations` and
+`knowledge_searched` (false for general knowledge, true for programme retrieval).
+Missing required Search, incomplete or invalid answers, authentication
+and provider failures return a sanitized502 error. No question or activity is
+written to SQLite. The browser retains a failed question draft for retry.
+
+A question can have up to4,000 characters. Context accepts up to12 messages in
+complete alternating user/assistant pairs, each up to12,000 characters and
+24,000 characters in total. The interface sends the newest complete pairs that
+fit those limits. Conversation and draft persist across navigation in this page
+session; **New conversation** or a reload clears them. Question text and recent
+context are sent to the configured Foundry service; provider-side retention is
+separate from the browser's temporary history. Images and coordinates are not
+included automatically.
+
+`REGEN_QUESTION_MODEL` selects the question deployment (default `gpt-5-mini`).
+`REGEN_SEARCH_CONNECTION_NAME` and `REGEN_SEARCH_INDEX_NAME` select approved
+knowledge for questions (defaults `regen-verification-search-mi` and
+`regen-verification-index`). Use the configured approved source consistently.

@@ -84,7 +84,7 @@ class QuestionChat {
       this.status("Enter a question of up to 4,000 characters.", true); return;
     }
     this.setPending(true);
-    this.status("Looking up approved knowledge and preparing an answer…");
+    this.status("Preparing your answer…");
     try {
       const result = await this.request("/api/questions", {question, history: questionHistory(this.turns)});
       const turn = {question, answer: result.answer, citations: result.citations};
