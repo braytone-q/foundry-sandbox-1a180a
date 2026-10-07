@@ -4,11 +4,14 @@ from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
-from fastapi import FastAPI, Query, Request
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import ValidationError
+from starlette.concurrency import run_in_threadpool
 
 from .foundry import FoundryGateway
+from .images import MAX_UPLOAD_BODY_BYTES, UploadBodyLimitMiddleware, UploadFailure, upload_path
 from .schemas import (AttemptState, Recommendation, RetryInput, ReviewInput, RevisionInput,
                       SubmissionInput, SubmissionPage, SubmissionRecord)
 from .service import SubmissionService
@@ -32,6 +35,7 @@ def create_app(settings=None, gateway=None):
             gateway.close()
 
     app = FastAPI(title="Re-gen local review API", version="0.1.0", lifespan=lifespan)
+    app.add_middleware(UploadBodyLimitMiddleware, limit=MAX_UPLOAD_BODY_BYTES)
     app.state.store, app.state.service = store, service
 
     @app.middleware("http")
@@ -46,8 +50,9 @@ def create_app(settings=None, gateway=None):
             origin = request.headers.get("origin")
             if (origin and origin != f"{request.url.scheme}://{request.headers['host']}") or request.headers.get("sec-fetch-site") == "cross-site":
                 return JSONResponse({"detail": "Use the interface on this server."}, status_code=403)
-            if request.headers.get("content-type", "").split(";", 1)[0].lower() != "application/json":
-                return JSONResponse({"detail": "Send application/json."}, status_code=415)
+            expected_type = "multipart/form-data" if upload_path(request.url.path) else "application/json"
+            if request.headers.get("content-type", "").split(";", 1)[0].lower() != expected_type:
+                return JSONResponse({"detail": f"Send {expected_type}."}, status_code=415)
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
@@ -72,6 +77,43 @@ def create_app(settings=None, gateway=None):
     @app.exception_handler(sqlite3.Error)
     async def database_error(request, exc):
         return JSONResponse({"detail": "Local storage could not complete the request. Check the server and refresh."}, status_code=500)
+
+    @app.exception_handler(OSError)
+    async def file_error(request, exc):
+        return JSONResponse({"detail": "Local image storage could not complete the request. Check available disk space and retry."}, status_code=500)
+
+    @app.exception_handler(UploadFailure)
+    async def invalid_upload(request, exc):
+        return JSONResponse({"detail": exc.message}, status_code=exc.status)
+
+    async def validate_form(request, fields):
+        form = await request.form()
+        if set(form.keys()) != fields or any(len(form.getlist(key)) != 1 for key in fields - {"images"}):
+            raise HTTPException(422, "Use only the required description, version and image fields.")
+
+    @app.post("/api/submissions/with-images", response_model=SubmissionRecord, status_code=201)
+    async def create_images(request: Request, description: Annotated[str, Form()], images: Annotated[list[UploadFile], File()]):
+        await validate_form(request, {"description", "images"})
+        try:
+            input = SubmissionInput(description=description)
+        except ValidationError:
+            raise HTTPException(422, "Supply a meaningful description of at most 16,000 characters.")
+        return await run_in_threadpool(service.upload, input, images)
+
+    @app.post("/api/submissions/{id}/revisions/with-images", response_model=SubmissionRecord, status_code=201)
+    async def revise_images(id: str, request: Request, description: Annotated[str, Form()],
+                            expected_version: Annotated[int, Form(ge=1)], images: Annotated[list[UploadFile], File()]):
+        await validate_form(request, {"description", "expected_version", "images"})
+        try:
+            input = RevisionInput(description=description, expected_version=expected_version)
+        except ValidationError:
+            raise HTTPException(422, "Supply a meaningful description of at most 16,000 characters and the viewed version.")
+        return await run_in_threadpool(service.upload, input, images, id)
+
+    @app.get("/api/images/{id}", include_in_schema=True)
+    def original_image(id: str):
+        image = store.image(id)
+        return FileResponse(image["path"], media_type=image["media_type"], filename=image["filename"], content_disposition_type="inline")
 
     @app.get("/api/health")
     def health():

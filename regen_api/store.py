@@ -5,6 +5,8 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from .images import MAX_IMAGES, UploadFailure
+
 
 class NotFound(Exception):
     pass
@@ -21,6 +23,7 @@ def now():
 class Store:
     def __init__(self, path):
         self.path = path
+        self.evidence_dir = path.parent / "evidence"
 
     @contextmanager
     def connection(self, write=False):
@@ -65,6 +68,18 @@ class Store:
                         REFERENCES submission_revisions(submission_id, revision))""",
                 "CREATE INDEX IF NOT EXISTS attempt_source ON analysis_attempts(submission_id, revision)",
                 "CREATE INDEX IF NOT EXISTS review_source ON review_events(submission_id)",
+                """CREATE TABLE IF NOT EXISTS evidence_images (
+                    id TEXT PRIMARY KEY, submission_id TEXT NOT NULL REFERENCES submissions(id),
+                    filename TEXT NOT NULL, media_type TEXT NOT NULL, size_bytes INTEGER NOT NULL,
+                    width INTEGER NOT NULL, height INTEGER NOT NULL, sha256 TEXT NOT NULL,
+                    created_at TEXT NOT NULL, stored_name TEXT NOT NULL UNIQUE)""",
+                """CREATE TABLE IF NOT EXISTS revision_images (
+                    submission_id TEXT NOT NULL, revision INTEGER NOT NULL,
+                    image_id TEXT NOT NULL REFERENCES evidence_images(id), position INTEGER NOT NULL,
+                    PRIMARY KEY(submission_id, revision, image_id),
+                    UNIQUE(submission_id, revision, position),
+                    FOREIGN KEY(submission_id, revision)
+                        REFERENCES submission_revisions(submission_id, revision))""",
             ):
                 db.execute(statement)
 
@@ -96,25 +111,76 @@ class Store:
             (id, submission_id, revision, state, started_at, agent_name, agent_version)
             VALUES (?, ?, ?, 'RUNNING', ?, ?, ?)""",
             (attempt_id, id, revision, timestamp, agent_name, agent_version))
-        return {"id": id, "attempt_id": attempt_id, "description": description}
+        return {"id": id, "attempt_id": attempt_id, "description": description,
+                "images": [self._image_descriptor(r) for r in self._image_rows(db, id, revision)]}
 
-    def create(self, description, agent_name, agent_version):
+    @contextmanager
+    def source_write(self):
+        created = []
+        try:
+            with self.connection(True) as db:
+                yield db, created
+        except BaseException:
+            # Only this transaction's newly generated filenames may be removed.
+            for path in created:
+                path.unlink(missing_ok=True)
+            raise
+
+    def _image_rows(self, db, id, revision):
+        return db.execute("""SELECT e.id, e.filename, e.media_type, e.size_bytes, e.width,
+            e.height, e.sha256, e.created_at, e.stored_name FROM revision_images r
+            JOIN evidence_images e ON e.id=r.image_id
+            WHERE r.submission_id=? AND r.revision=? ORDER BY r.position""", (id, revision)).fetchall()
+
+    def _image_descriptor(self, row):
+        result = dict(row)
+        result["path"] = self.evidence_dir / result.pop("stored_name")
+        return result
+
+    def image(self, id):
+        with self.connection() as db:
+            row = db.execute("SELECT * FROM evidence_images WHERE id=?", (id,)).fetchone()
+            if row is None:
+                raise NotFound("Image not found.")
+            return self._image_descriptor(row)
+
+    def _save_images(self, db, id, revision, existing, images, created):
+        if len(existing) + len(images) > MAX_IMAGES:
+            raise UploadFailure(422, "An activity revision can contain at most 20 images.")
+        ids = [image["id"] for image in existing]
+        for image in images:
+            destination = self.evidence_dir / image.stored_name
+            if destination.exists():
+                raise OSError("Image storage collision")
+            created.append(destination)
+            image.staged_path.replace(destination)
+            db.execute("INSERT INTO evidence_images VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (image.id, id, image.filename, image.media_type, image.size_bytes, image.width,
+                 image.height, image.sha256, image.created_at, image.stored_name))
+            ids.append(image.id)
+        for position, image_id in enumerate(ids):
+            db.execute("INSERT INTO revision_images VALUES (?, ?, ?, ?)", (id, revision, image_id, position))
+
+    def create(self, description, agent_name, agent_version, images=None):
         id, timestamp = str(uuid4()), now()
-        with self.connection(True) as db:
+        with self.source_write() as (db, created):
             db.execute("INSERT INTO submissions VALUES (?, 1, 1, 'PENDING_REVIEW', ?, ?)",
                        (id, timestamp, timestamp))
             db.execute("INSERT INTO submission_revisions VALUES (?, 1, ?, ?)", (id, description, timestamp))
+            self._save_images(db, id, 1, [], images or [], created)
             return self._attempt(db, id, 1, description, agent_name, agent_version, timestamp)
 
-    def begin_attempt(self, id, expected_version, agent_name, agent_version, description=None):
-        with self.connection(True) as db:
+    def begin_attempt(self, id, expected_version, agent_name, agent_version, description=None, images=None):
+        with self.source_write() as (db, created):
             row, _ = self._mutable(db, id, expected_version)
             revision, status, timestamp = row["current_revision"], row["review_status"], now()
             if description is not None:
+                existing = self._image_rows(db, id, revision)
                 revision += 1
                 status = "PENDING_REVIEW"
                 db.execute("INSERT INTO submission_revisions VALUES (?, ?, ?, ?)",
                            (id, revision, description, timestamp))
+                self._save_images(db, id, revision, existing, images or [], created)
             else:
                 description = db.execute("""SELECT description FROM submission_revisions
                     WHERE submission_id=? AND revision=?""", (id, revision)).fetchone()[0]
@@ -170,6 +236,15 @@ class Store:
         record = dict(self._submission(db, id))
         record["revisions"] = [dict(r) for r in db.execute("""SELECT revision, description, created_at
             FROM submission_revisions WHERE submission_id=? ORDER BY revision""", (id,))]
+        for revision in record["revisions"]:
+            revision["image_ids"] = [image["id"] for image in self._image_rows(db, id, revision["revision"])]
+        image_ids = {r["revision"]: r["image_ids"] for r in record["revisions"]}
+        record["images"] = []
+        for row in self._image_rows(db, id, record["current_revision"]):
+            image = dict(row)
+            image.pop("stored_name")
+            image["url"] = f'/api/images/{image["id"]}'
+            record["images"].append(image)
         record["description"] = record["revisions"][-1]["description"]
         attempts = []
         for r in db.execute("""SELECT id, revision, state, started_at, finished_at, agent_name,
@@ -178,6 +253,7 @@ class Store:
             attempt = dict(r)
             attempt["analysis"] = json.loads(attempt.pop("analysis_json") or "null")
             attempt["citations"] = json.loads(attempt.pop("citations_json"))
+            attempt["image_ids"] = image_ids[attempt["revision"]]
             attempts.append(attempt)
         record["attempts"] = attempts
         record["latest_attempt"] = next((a for a in attempts if a["revision"] == record["current_revision"]), None)

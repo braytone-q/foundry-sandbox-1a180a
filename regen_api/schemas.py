@@ -96,12 +96,26 @@ class Attempt(StrictModel):
     failure_code: str | None
     failure_message: str | None
     citations: list[Citation]
+    image_ids: list[str] = Field(default_factory=list)
 
 
 class Revision(StrictModel):
     revision: int
     description: str
     created_at: str
+    image_ids: list[str] = Field(default_factory=list)
+
+
+class ImageEvidence(StrictModel):
+    id: str
+    filename: str
+    media_type: str
+    size_bytes: int
+    width: int
+    height: int
+    sha256: str
+    created_at: str
+    url: str
 
 
 class ReviewEvent(StrictModel):
@@ -126,6 +140,7 @@ class SubmissionRecord(StrictModel):
     revisions: list[Revision]
     attempts: list[Attempt]
     reviews: list[ReviewEvent]
+    images: list[ImageEvidence] = Field(default_factory=list)
 
 
 class SubmissionPage(StrictModel):
