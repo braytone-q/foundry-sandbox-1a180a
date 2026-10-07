@@ -102,7 +102,7 @@ def create_app(settings=None, gateway=None):
 
     @app.post("/api/questions", response_model=QuestionAnswer)
     def ask(input: QuestionInput):
-        return gateway.ask(input)
+        return gateway.ask(input, review_summary=store.review_summary())
 
     async def validate_form(request, fields):
         form = await request.form()

@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from .images import MAX_IMAGES, UploadFailure
+from .schemas import ReviewSummary
 
 
 class NotFound(Exception):
@@ -298,6 +299,20 @@ class Store:
     def get(self, id):
         with self.connection() as db:
             return self._record(db, id)
+
+    def review_summary(self):
+        # One aggregate read of current human statuses, without source/evidence data.
+        # Close the transaction before the question's external model calls.
+        with self.connection() as db:
+            counts = {row['review_status']: row['count'] for row in db.execute(
+                "SELECT review_status, COUNT(*) AS count FROM submissions GROUP BY review_status")}
+            captured_at = now()
+        pending = counts.get('PENDING_REVIEW', 0)
+        clarification = counts.get('CLARIFICATION_REQUESTED', 0)
+        return ReviewSummary(captured_at=captured_at, total_submissions=sum(counts.values()),
+            pending_human_review=pending, awaiting_clarification=clarification,
+            approved=counts.get('APPROVED', 0), rejected=counts.get('REJECTED', 0),
+            active_review_queue=pending + clarification)
 
     def list(self, status=None, recommendation=None, analysis_state=None, limit=25, offset=0):
         conditions, params = [], []

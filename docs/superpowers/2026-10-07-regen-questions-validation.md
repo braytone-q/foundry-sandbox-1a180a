@@ -1,7 +1,7 @@
 # Ask Re-gen validation
 
 - Baseline before question mode: 122 passing tests.
-- Current complete suite: 177 passed in51.51 seconds. New coverage includes
+- Current complete suite: 183 passed in55.75 seconds. New coverage includes
   general and grounded paths, follow-up context, forced explicit programme
   retrieval, invalid route JSON, strict history/input limits, sanitized failures,
   safe citations, duplicate prevention, navigation, reset and retained drafts.
@@ -71,3 +71,32 @@
   Search/CLI edits were left outside this change. Routing and answer reliability
   remain model-dependent beyond the exercised cases. Browser/mobile presentation
   remains unverified because no CUA browser surface is available.
+
+## Live review counts
+
+- The reported question reproduced a refusal to read current app state. The
+  question route previously supplied only project facts and chat context, so the
+  model had no database counts. A fresh server-owned status summary now reaches
+  both answer stages on every request. The single aggregate read closes before
+  Azure calls and counts each submission once, regardless of retries/revisions.
+- Five regressions failed before the implementation. Six new checks now pass,
+  covering empty-store zeroes, all current human statuses, retry/revision counts,
+  fresh data after review changes, both answer stages, no source/coordinate
+  leakage, rejected client-supplied summaries and sanitized storage errors.
+- The live detailed-count question and the exact plain question with the old
+  refusal in history both returned pending human review7, clarification0 and
+  active queue7, matching the current database and queue filters. Rejected1 was
+  separate from the active queue. The mixed species/app-limit question still
+  retrieved the optional species rule, and multiplication returned102 without
+  programme citations. Four live questions passed; all full records stayed
+  identical throughout those checks.
+- Restart preserved eight records and47 original files. No descriptions,
+  images, device coordinates, IDs or reviewer details enter the status summary;
+  questions transmit only aggregate status counts and a snapshot timestamp in
+  addition to their existing context. The UI/docs disclose that addition.
+- Review found no Critical, Important or Minor issues. Its sandboxed test rerun
+  hung and was terminated; verification uses the parent's fresh183-test result.
+  Scope rulings: live old-refusal precedence was subsequently verified; current
+  authentication worked in the live checks, while broader future classification
+  reliability remains model-dependent; UI/doc text was checked separately;
+  unrelated existing Search/CLI edits remain excluded.

@@ -145,6 +145,25 @@ class QuestionAnswer(StrictModel):
         return self
 
 
+class ReviewSummary(StrictModel):
+    """Server-owned aggregate counts; never accepted from a question client."""
+    captured_at: str
+    total_submissions: Annotated[int, Field(ge=0)]
+    pending_human_review: Annotated[int, Field(ge=0)]
+    awaiting_clarification: Annotated[int, Field(ge=0)]
+    approved: Annotated[int, Field(ge=0)]
+    rejected: Annotated[int, Field(ge=0)]
+    active_review_queue: Annotated[int, Field(ge=0)]
+
+    @model_validator(mode="after")
+    def consistent_counts(self):
+        if self.total_submissions != self.pending_human_review + self.awaiting_clarification + self.approved + self.rejected:
+            raise ValueError("Status counts must cover every submission")
+        if self.active_review_queue != self.pending_human_review + self.awaiting_clarification:
+            raise ValueError("Active queue includes pending and clarification statuses")
+        return self
+
+
 class ImageComparison(StrictModel):
     image_id: str
     filename: str

@@ -16,6 +16,17 @@ The existing regen11 verification agent and exact14 analysis remain unchanged.
 This avoids routing questions through the activity form or changing the existing
 verification output contract.
 
+Each question receives a fresh server-owned aggregate snapshot of current human
+review statuses from local storage. The single read counts submissions rather
+than attempts or revisions, closes before model calls, and reaches both answer
+stages. It contains a timestamp, total, pending human review, clarification,
+approved, rejected and active-queue counts. Active queue includes pending plus
+clarification. The model answers these counts directly using this snapshot over
+historical chat statements. It receives no individual saved source text, evidence,
+coordinates or reviewer details. Question clients cannot supply or override the
+snapshot. Storage failure uses the existing sanitized500 handler before model
+access rather than fabricating a count.
+
 The existing Foundry project client calls gpt-5-mini directly with a question
 instruction set. A strict typed first response determines whether approved knowledge
 is needed, using the question and history. It answers general topics and documented

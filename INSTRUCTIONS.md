@@ -268,6 +268,15 @@ then follow up in the same conversation. Questions do not create activity record
 request device location, inspect stored images, or make human review decisions.
 Use **Submit Activity** to supply work and images for an assessment.
 
+Questions also receive a fresh, read-only database summary of total submissions,
+pending human review, clarification requested, approved, rejected and the active
+Review Queue total. Pending human review means `PENDING_REVIEW`; the default
+active queue also includes `CLARIFICATION_REQUESTED`. The snapshot is timestamped
+and refreshed for each question, including follow-ups. Counts do not come from
+programme Search or old chat answers. Individual source descriptions, reviewer
+notes, images and device coordinates are not included in the summary. A failed
+database read returns a sanitized storage error before any model call.
+
 Ask Re-gen also receives a maintained briefing of the implemented project:
 its purpose, navigation screens, submission/review workflow, pixel inspection,
 image limits, required location capture, storage and current local-only scope.
@@ -311,8 +320,8 @@ A question can have up to4,000 characters. Context accepts up to12 messages in
 complete alternating user/assistant pairs, each up to12,000 characters and
 24,000 characters in total. The interface sends the newest complete pairs that
 fit those limits. Conversation and draft persist across navigation in this page
-session; **New conversation** or a reload clears them. Question text and recent
-context are sent to the configured Foundry service; provider-side retention is
+session; **New conversation** or a reload clears them. Question text, recent
+context and aggregate review counts are sent to the configured Foundry service; provider-side retention is
 separate from the browser's temporary history. Images and coordinates are not
 included automatically.
 

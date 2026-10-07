@@ -4,6 +4,7 @@ Run explicitly: .venv/bin/python -m pytest -q -s tests/live_project_questions.py
 These make paid model calls; default pytest discovery excludes this filename.
 """
 import re
+from collections import Counter
 
 import httpx
 import pytest
@@ -98,3 +99,27 @@ def test_everyday_questions_still_avoid_programme_citations(live_client):
     ])
     assert "102" in result["answer"]
     assert not result["knowledge_searched"] and result["citations"] == []
+
+
+def test_current_review_counts_are_answered_from_real_app_data(live_client):
+    counts = Counter(record['review_status'] for record in snapshot(live_client).values())
+    result = ask(live_client, 'How many activities are awaiting human review? Give the current '
+                 'PENDING_REVIEW and CLARIFICATION_REQUESTED counts and the active Review Queue total.')
+    answer = result['answer']
+    for status in ('PENDING_REVIEW', 'CLARIFICATION_REQUESTED'):
+        assert re.search(status + r'[^\d\n]{0,80}' + str(counts[status]) + r'\b', answer, re.I), answer
+    active = counts['PENDING_REVIEW'] + counts['CLARIFICATION_REQUESTED']
+    assert re.search(r'(?:active|queue)[^\d\n]{0,80}' + str(active) + r'\b', answer, re.I), answer
+    assert not result['knowledge_searched'] and result['citations'] == []
+
+
+def test_live_counts_override_an_old_refusal_in_conversation(live_client):
+    pending = sum(record['review_status'] == 'PENDING_REVIEW' for record in snapshot(live_client).values())
+    question = 'How many activities are awaiting human review?'
+    result = ask(live_client, question, [
+        {'role': 'user', 'content': question},
+        {'role': 'assistant', 'content': "I can’t see live app data from here. To find how many activities "
+         "are awaiting human review, open the Review Queue screen in the local app."},
+    ])
+    assert re.search(r'\b' + str(pending) + r'\b', result['answer']), result['answer']
+    assert not result['knowledge_searched'] and result['citations'] == []
