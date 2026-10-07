@@ -6,6 +6,7 @@
   <meta name="theme-color" content="#143f32">
   <title>Re-gen · Conservation review</title>
   <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/images.js" defer></script>
   <script src="/static/app.js" defer></script>
 </head>
 <body>
@@ -28,16 +29,17 @@
         <div class="page-heading"><p class="eyebrow">EVERY ACTION HAS A STORY</p><h1 id="submit-title">Good work starts<br>on the ground.</h1><p class="intro">Tell us what happened. Re-gen will prepare your activity<br class="desktop-break"> for a thoughtful human review.</p></div>
         <div class="submit-layout">
           <form id="submission-form" class="card submission-card">
-            <fieldset><div class="card-heading"><h2>Share your activity</h2><span class="tag neutral">Text submission</span></div>
+            <fieldset><div class="card-heading"><h2>Share your activity</h2><span class="tag neutral">Activity & images</span></div>
             <label for="description">Activity description</label>
             <p id="description-help" class="field-help">Describe the work in your own words. Include the details you know and any evidence you are reporting.</p>
             <textarea id="description" name="description" rows="9" required maxlength="16000" aria-describedby="description-help" placeholder="For example: Our community group planted seedlings today. Describe the place, quantity, species and evidence you can report…"></textarea>
-            <div class="input-meta"><span>Evidence is reported as text in this prototype.</span><span id="character-count">0 / 16,000</span></div>
+            <div class="input-meta"><span>Your words and images are saved for review.</span><span id="character-count">0 / 16,000</span></div>
+            <div id="submission-images" class="image-picker"></div>
             <div class="form-footer"><p>Your original words are saved.<br>AI analysis does not make a human decision.</p><button type="submit" class="primary" id="submit-button">Prepare for review <span aria-hidden="true">↗</span></button></div>
             </fieldset>
             <p id="submit-progress" class="progress" role="status" hidden>Saving your activity and checking the approved knowledge source. This may take a moment…</p>
           </form>
-          <aside class="guide"><div class="guide-illustration" aria-hidden="true"><span class="plant-stem"></span><span class="plant-leaf left"></span><span class="plant-leaf right"></span><span class="plant-ground"></span><span class="plant-sun"></span></div><p class="eyebrow">FROM ACTION TO UNDERSTANDING</p><h2>A clear path to review.</h2><ol class="steps"><li><span>01</span><div><strong>You share the activity</strong><p>Your description becomes the source record.</p></div></li><li><span>02</span><div><strong>AI prepares the analysis</strong><p>Approved rules guide its findings and questions.</p></div></li><li><span>03</span><div><strong>A person reviews it</strong><p>A named reviewer records an explicit decision.</p></div></li></ol><p class="guide-footnote">Photos and files cannot be uploaded yet. Reported evidence stays distinct from evidence received.</p></aside>
+          <aside class="guide"><div class="guide-illustration" aria-hidden="true"><span class="plant-stem"></span><span class="plant-leaf left"></span><span class="plant-leaf right"></span><span class="plant-ground"></span><span class="plant-sun"></span></div><p class="eyebrow">FROM ACTION TO UNDERSTANDING</p><h2>A clear path to review.</h2><ol class="steps"><li><span>01</span><div><strong>You share the activity</strong><p>Your description and images become the source record.</p></div></li><li><span>02</span><div><strong>AI prepares the analysis</strong><p>Approved rules guide its findings and questions.</p></div></li><li><span>03</span><div><strong>A person reviews it</strong><p>A named reviewer records an explicit decision.</p></div></li></ol><p class="guide-footnote">Add up to 20 images. AI considers visible content; a person assesses the evidence and records the decision.</p></aside>
         </div>
       </section>
       <section id="queue-view" class="view" hidden aria-labelledby="queue-title">

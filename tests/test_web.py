@@ -16,6 +16,19 @@ def test_browser_assets_are_served_without_azure(app_bundle):
     assert "frame-ancestors 'none'" in page.headers["content-security-policy"]
 
 
+def test_image_picker_assets_and_blob_previews_are_served(client):
+    page = client.get("/")
+    assert 'src="/static/images.js"' in page.text
+    assert client.get("/static/images.js").status_code == 200
+    assert "img-src 'self' blob:" in page.headers["content-security-policy"]
+
+
+@pytest.mark.skipif(shutil.which("node") is None, reason="Node is needed for browser image checks")
+def test_browser_image_selection_and_multipart():
+    result = subprocess.run(["node", "tests/browser_images.cjs"], capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_source_script_markup_round_trips_as_data(client):
     source = '<script>alert("untrusted")</script>'
     response = client.post("/api/submissions", json={"description": source})

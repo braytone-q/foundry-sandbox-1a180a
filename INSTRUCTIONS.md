@@ -96,8 +96,10 @@ with the same saved records. A second process on the same database is unsupporte
 
 Submit a complete activity description. The saved record shows the original
 source, AI recommendation, missing information, questions, and reported evidence.
-This version accepts text only: reporting an attached photo does not supply a
-photo, and `evidence_received` remains empty. A failed Azure call still returns
+The MVP accepts text and up to 20 JPEG, PNG or WebP images per activity.
+Reporting a photo without uploading it does not supply evidence. Completed
+analysis records list the images actually supplied in `evidence_received`.
+A failed Azure call still returns
 the saved record and a safe failure message; its Retry Analysis action adds an
 attempt without changing the source. A description update saves a full replacement
 revision and preserves older source, analysis, and review history.
@@ -134,10 +136,11 @@ Settings are environment variables: `REGEN_PROJECT_ENDPOINT`, `REGEN_AGENT_NAME`
 (positive and at most 600), and `REGEN_PORT` (launch port, default 8000).
 Keep the existing working agent and Search setup unless deliberately testing a
 new version. Runtime records contain submitted text and are excluded from Git;
-keep a copy of the SQLite file with the server stopped if you need a backup.
+back up both the SQLite file and its sibling `evidence/` directory with the
+server stopped. The originals and image associations must be restored together.
 
 This is a trusted single-operator local prototype. Keep the loopback binding.
-Shared hosting, authenticated submitter/verifier roles, file uploads, rewards,
+Shared hosting, authenticated submitter/verifier roles, rewards,
 reopening final reviews, and cloud deployment belong to later phases.
 
 Offline verification:
@@ -158,3 +161,46 @@ call and validates a successful Search result before accepting an analysis; see
 [Microsoft’s Search tool example](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/tools/ai-search).
 The existing CLI uses automatic tool choice and can occasionally omit retrieval;
 the API records such a response as a failed attempt rather than accepting it.
+
+## Image evidence MVP
+
+Choose images below the description, inspect the previews, and remove unwanted
+files before submitting. The limit is 20 saved images per activity, 8 MiB per
+file, 32 million decoded pixels and 16,000 pixels on either side. JPEG, PNG and
+WebP must be valid and non-animated. The server verifies actual contents rather
+than trusting filenames or browser MIME labels. A whole invalid batch is rejected.
+The total multipart body limit is 161 MiB.
+
+Source revisions retain earlier images and may append more up to the combined
+20-image limit. Saved originals cannot be removed or replaced in this MVP. Open
+a gallery image to inspect its original; revision and analysis history show the
+images associated with that event. Text-only revisions and analysis retries use
+the same saved image set. Failed analysis keeps the source and images for retry.
+
+Original bytes are stored under generated names in `runtime/evidence/`, next to
+the SQLite database (or next to `REGEN_DATABASE_PATH`). Records include verified
+MIME type, size, dimensions, SHA-256 and upload time. Smaller, oriented JPEG copies
+with a maximum 1,600-pixel edge and no EXIF metadata are sent to the existing
+Foundry agent. Originals remain unchanged for human reviewers.
+
+The AI can describe visible content, but photographs alone do not authenticate
+the claimed date, place, species or exact quantity. Image receipts mean supplied
+to a completed analysis, not authenticated or approved. Approved Search rules
+still govern recommendations, and a person must make the review decision.
+
+Image routes use multipart forms (do not manually set the multipart boundary):
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/submissions/with-images \
+  -F 'description=Describe the actual work and the supplied photographs.' \
+  -F 'images=@photo-1.jpg' -F 'images=@photo-2.png'
+# Append files in a new revision, using the current saved version:
+curl -X POST http://127.0.0.1:8000/api/submissions/SUBMISSION_ID/revisions/with-images \
+  -F 'description=Complete updated account.' -F 'expected_version=2' \
+  -F 'images=@photo-3.webp'
+```
+
+Repeat `images` for each file. Originals are served by `GET /api/images/{id}`.
+Existing JSON create, revision, retry and human-review routes remain available.
+Runtime image data is excluded from Git along with the database. Keep this
+prototype bound to loopback and use it on a trusted computer.

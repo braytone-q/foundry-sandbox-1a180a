@@ -8,6 +8,7 @@ const labels = {
   SUCCEEDED: "Analysis complete", APPROVE: "Approve", REJECT: "Reject", REQUEST_CLARIFICATION: "Request clarification"
 };
 let current = null, pendingReview = null, busy = false, offset = 0, total = 0, routeSequence = 0, queueSequence = 0;
+let revisionPicker = null;
 const pageSize = 25;
 
 // All record content is untrusted. Build elements and assign text, never HTML.
@@ -42,7 +43,8 @@ function setBusy(value) {
   $("#cancel-review").disabled = value;
 }
 async function api(path, body) {
-  const options = body === undefined ? {} : {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)};
+  const options = body === undefined ? {} : body instanceof FormData ? {method: "POST", body} :
+    {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)};
   let response;
   try { response = await fetch(path, options); }
   catch { throw new Error("The server could not be reached. Refresh to check whether your activity or review was saved before trying again."); }
@@ -84,6 +86,8 @@ async function renderRoute() {
   const sequence = ++routeSequence;
   const hash = location.hash.slice(1) || "submit";
   const view = hash.startsWith("submission/") ? "detail" : hash === "history" ? "history" : hash === "queue" ? "queue" : "submit";
+  revisionPicker?.clear(); revisionPicker = null;
+  if (view !== "submit") submissionPicker.clear();
   document.querySelectorAll(".view").forEach((element) => { element.hidden = true; });
   $(view === "history" ? "#queue-view" : `#${view}-view`).hidden = false;
   document.querySelectorAll("[data-nav]").forEach((link) => {
@@ -147,6 +151,7 @@ function titleFor(record) {
 
 function renderDetail() {
   cancelConfirmation();
+  revisionPicker?.clear(); revisionPicker = null;
   const record = current, attempt = record.latest_attempt, analysis = attempt?.analysis;
   const container = $("#detail-content"); container.replaceChildren();
   const back = node("a", "← Back to review queue", "back-link"); back.href = "#queue"; container.append(back);
@@ -157,6 +162,9 @@ function renderDetail() {
   const layout = node("div", null, "detail-layout"), main = node("div", null, "detail-main"), side = node("div", null, "detail-side");
   const source = card("The activity, in their words", `SOURCE DESCRIPTION · REVISION ${record.current_revision}`);
   source.append(node("p", record.description, "source-text")); main.append(source);
+  const photos = card(`Images supplied · ${(record.images || []).length}`, `SOURCE EVIDENCE · REVISION ${record.current_revision}`);
+  photos.append(node("p", "Open an image to inspect its original. Images are supplied evidence; they do not authenticate the reported date, location or counts.", "field-help"));
+  photos.append(record.images?.length ? imageGallery(record) : node("p", "No images supplied.", "field-help")); main.append(photos);
   const ai = card("AI analysis", attempt ? `FOUNDRY AGENT ${attempt.agent_name} · VERSION ${attempt.agent_version}` : "NO ATTEMPT");
   if (analysis) {
     ai.append(badge(analysis.recommendation));
@@ -170,7 +178,7 @@ function renderDetail() {
     }
     if (analysis.clarification_question) { const question = node("div", null, "finding"); question.append(node("h3", "AI clarification question"), node("p", analysis.clarification_question)); ai.append(question); }
     const evidence = node("div", null, "evidence-grid");
-    for (const [values, label, fallback] of [[analysis.evidence_reported, "Evidence reported", "No evidence reported."], [analysis.evidence_received, "Evidence received", "None. This prototype accepts text only."]]) {
+    for (const [values, label, fallback] of [[analysis.evidence_reported, "Evidence reported", "No evidence reported."], [analysis.evidence_received, "Images supplied to this analysis", "No images supplied to this analysis."]]) {
       const part = node("div"); part.append(node("h3", label), values.length ? list(values) : node("p", fallback)); evidence.append(part);
     }
     ai.append(evidence);
@@ -226,11 +234,13 @@ function reviewCard(record) {
   box.append(node("p", "Record your own assessment. Your choice is independent of the AI recommendation.", "field-help"), form); return box;
 }
 function revisionCard(record) {
-  const box = card("Update the description", "A NEW SOURCE REVISION");
-  box.append(node("p", "Replace the complete description with your updated account. Earlier words and reviews stay in history.", "field-help"));
+  const box = card("Update the activity", "A NEW SOURCE REVISION");
+  box.append(node("p", "Replace the complete description and optionally add images. Saved images stay attached; earlier revisions and reviews remain in history.", "field-help"));
   const form = node("form", null, "revision-form"), fields = node("fieldset");
   fields.append(field("Complete updated description", "revision-description", "textarea", 16000));
   fields.querySelector("textarea").value = record.description;
+  const pickerRoot = node("div", null, "image-picker"); fields.append(pickerRoot);
+  const picker = new ImagePicker(pickerRoot, {existing: record.images?.length || 0}); revisionPicker = picker;
   const submit = node("button", "Save revision & analyze ↗", "secondary"); submit.type = "submit";
   fields.append(submit); form.append(fields);
   if (record.latest_attempt?.state === "RUNNING") { fields.dataset.blocked = "true"; fields.disabled = true; box.append(node("p", "Wait for the running analysis before saving a revision.", "field-help")); }
@@ -238,7 +248,7 @@ function revisionCard(record) {
     event.preventDefault(); if (busy) return;
     const description = fields.querySelector("textarea").value;
     if (!description.trim()) { notice("Describe the activity before saving a revision.", true); return; }
-    mutate("revisions", {description, expected_version: record.version});
+    mutate(picker.files.length ? "revisions/with-images" : "revisions", submissionBody(description, picker.files, record.version));
   });
   box.append(form); return box;
 }
@@ -255,6 +265,10 @@ function historyCard(record) {
     for (const value of values) {
       const [title, timestamp, content] = render(value), entry = node("details"), summary = node("summary", title);
       summary.append(node("small", timestamp)); entry.append(summary, node(heading === "ANALYSIS ATTEMPTS" ? "pre" : "p", content, "source-text")); box.append(entry);
+      if (value.image_ids) {
+        entry.append(node("p", `${value.image_ids.length} image${value.image_ids.length === 1 ? "" : "s"} in this ${heading === "SOURCE REVISIONS" ? "revision" : "analysis attempt"}`, "field-help"));
+        if (value.image_ids.length) entry.append(imageGallery(record, value.image_ids));
+      }
     }
   }
   return box;
@@ -275,7 +289,7 @@ function cancelConfirmation() {
 async function mutate(action, body, id = current?.id) {
   if (busy || !current) return;
   if (current.id !== id) { notice("The viewed record changed. Inspect it before confirming a new action.", true); return; }
-  setBusy(true); notice(action === "reviews" ? "Saving your human review…" : "Your source is saved before analysis. Checking the approved knowledge source…");
+  setBusy(true); notice(action === "reviews" ? "Saving your human review…" : "Saving your source and images, then checking the approved knowledge source…");
   try {
     const record = await api(`${path(id)}/${action}`, body);
     if (current?.id === id) { current = record; renderDetail(); }
@@ -288,13 +302,15 @@ async function mutate(action, body, id = current?.id) {
   } finally { setBusy(false); }
 }
 
+const submissionPicker = new ImagePicker($("#submission-images"));
 $("#submission-form").addEventListener("submit", async (event) => {
   event.preventDefault(); if (busy) return;
   const description = $("#description").value;
   if (!description.trim()) { notice("Describe the activity before submitting.", true); return; }
   setBusy(true); notice(""); $("#submit-progress").hidden = false;
   try {
-    const record = await api("/api/submissions", {description});
+    const record = await api(submissionPicker.files.length ? "/api/submissions/with-images" : "/api/submissions", submissionBody(description, submissionPicker.files));
+    submissionPicker.clear();
     $("#submission-form").reset(); $("#character-count").textContent = "0 / 16,000";
     showDetail(record.id); notice(record.latest_attempt.state === "FAILED" ? "Your activity is saved. Analysis needs attention; you can retry from its record." : "Your activity and AI analysis are saved. A human decision is still required.");
   } catch (error) { notice(error.message, true); }

@@ -13,6 +13,7 @@ function harness() {
     append(...children) { this.children.push(...children); }
     replaceChildren(...children) { this.children = children; }
     addEventListener(type, fn) { this.events[type] = fn; }
+    setAttribute(key, value) { this[key] = value; }
     reportValidity() { return true; }
     showModal() { this.open = true; }
     close() { this.open = false; }
@@ -23,9 +24,9 @@ function harness() {
   }
   const context = vm.createContext({document: {querySelector: element, querySelectorAll: () => [],
     createElement: (tag) => new Element(tag)}, window: {addEventListener() {}},
-    location: {hash: "#submission/A"}, URLSearchParams, console});
+    location: {hash: "#submission/A"}, URLSearchParams, URL, FormData, console});
   const run = (code) => vm.runInContext(code, context);
-  run(source);
+  run(fs.readFileSync("regen_api/static/images.js", "utf8")); run(source);
   return {element, run};
 }
 function findButton(element, text) {

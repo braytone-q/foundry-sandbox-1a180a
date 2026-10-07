@@ -61,7 +61,7 @@ def create_app(settings=None, gateway=None):
         if request.url.path == "/":
             response.headers["Content-Security-Policy"] = (
                 "default-src 'self'; script-src 'self'; style-src 'self'; "
-                "img-src 'self'; connect-src 'self'; object-src 'none'; "
+                "img-src 'self' blob:; connect-src 'self'; object-src 'none'; "
                 "base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
             )
         return response
