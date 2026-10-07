@@ -18,6 +18,8 @@ function harness() {
     reportValidity() { return true; }
     showModal() { this.open = true; }
     close() { this.open = false; }
+    reset() {}
+    querySelector(tag) { for(const child of this.children) { if(child.tag===tag)return child; const result=child.querySelector(tag);if(result)return result; } }
   }
   function element(selector) {
     if (!elements.has(selector)) elements.set(selector, new Element());
@@ -25,9 +27,10 @@ function harness() {
   }
   const context = vm.createContext({document: {querySelector: element, querySelectorAll: () => [],
     createElement: (tag) => new Element(tag)}, window: {addEventListener() {}},
-    location: {hash: "#submission/A"}, URLSearchParams, URL, FormData, File, console});
+    location: {hash: "#submission/A"}, navigator:{}, Date, Promise, Error, setTimeout,clearTimeout, URLSearchParams, URL, FormData, File, console});
   const run = (code) => vm.runInContext(code, context);
   run(fs.readFileSync("regen_api/static/images.js", "utf8")); run(source);
+  if(fs.existsSync('regen_api/static/location.js'))run(fs.readFileSync('regen_api/static/location.js','utf8'));
   return {element, run};
 }
 function findButton(element, text) {
@@ -121,7 +124,34 @@ async function imageComparisonIsVisibleAndSafe() {
   const legacy = h.run('renderImageAssessment(null, 1)');
   assert.equal(flatten(legacy).some(el => el.textContent?.includes('not recorded')), true);
 }
-const checks = {refresh: refreshCannotRedirectReview, filters: latestFilterWins, confirmation: confirmationStaysBoundToRecord, image_draft: navigationRetainsImageDraft, image_comparison:imageComparisonIsVisibleAndSafe};
+async function submissionRequiresFreshLocation(){
+ const h=harness();h.element('#description').value='Draft with photograph';
+ h.run(`var calls=[];var geoCalls=0;
+ navigator.geolocation={getCurrentPosition(success){geoCalls++;success({timestamp:Date.now(),coords:{latitude:0.1,longitude:36.2,accuracy:8}});}};
+ api=async(url,body)=>(calls.push({url,body}),{id:'new',latest_attempt:{state:'SUCCEEDED'}});`);
+ await h.element('#submission-form').events.submit({preventDefault(){}});
+ assert.equal(h.run('geoCalls'),1);assert.equal(h.run('calls[0].body.device_location.latitude'),0.1);
+}
+async function deniedLocationPreservesDraft(){
+ const h=harness();h.element('#description').value='Draft with photograph';
+ h.run(`var calls=[];submissionPicker.add([new File([new Uint8Array([1])],'photo.png',{type:'image/png'})]);
+ navigator.geolocation={getCurrentPosition(success,error){error({code:1});}};
+ api=async(url,body)=>(calls.push({url,body}),{id:'new',latest_attempt:{state:'SUCCEEDED'}});`);
+ await h.element('#submission-form').events.submit({preventDefault(){}});
+ assert.equal(h.run('calls.length'),0);assert.equal(h.run('submissionPicker.files.length'),1);
+ assert.equal(h.element('#description').value,'Draft with photograph');assert.equal(h.run('busy'),false);
+}
+async function revisionLocationCannotChangeTarget(){
+ const h=harness();h.run(`var posts=[];var resolveLocation;
+ current={id:'A',version:2,description:'Original',review_status:'PENDING_REVIEW',latest_attempt:{state:'SUCCEEDED'}};
+ captureDeviceLocation=()=>new Promise(resolve=>resolveLocation=resolve);
+ api=async(url,body)=>(posts.push({url,body}),{...current,latest_attempt:{state:'SUCCEEDED'}});`);
+ const box=h.run('revisionCard(current)');const form=box.children.find(e=>e.tag==='form');
+ const pending=form.events.submit({preventDefault(){}});
+ h.run(`++routeSequence;current={id:'B',version:2};resolveLocation({latitude:0,longitude:0,accuracy_m:1,captured_at:new Date().toISOString(),source:'browser_geolocation'});`);
+ await pending;assert.equal(h.run('posts.length'),0,'A location await must not post to the newly viewed record');
+}
+const checks = {refresh: refreshCannotRedirectReview, filters: latestFilterWins, confirmation: confirmationStaysBoundToRecord, image_draft: navigationRetainsImageDraft, image_comparison:imageComparisonIsVisibleAndSafe, location:submissionRequiresFreshLocation, location_denied:deniedLocationPreservesDraft, location_navigation:revisionLocationCannotChangeTarget};
 const check = checks[process.argv[2]];
 if (!check) throw new Error("Choose refresh, filters or confirmation");
 check().then(() => console.log(`PASS ${process.argv[2]}`)).catch((error) => { console.error(error); process.exitCode = 1; });

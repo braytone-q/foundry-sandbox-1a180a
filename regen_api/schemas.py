@@ -1,4 +1,5 @@
 from typing import Annotated, Literal
+from datetime import datetime, timezone
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
@@ -46,13 +47,32 @@ class Analysis(StrictModel):
         return self
 
 
+class DeviceLocation(StrictModel):
+    latitude: Annotated[float, Field(ge=-90, le=90)]
+    longitude: Annotated[float, Field(ge=-180, le=180)]
+    accuracy_m: Annotated[float, Field(ge=0)]
+    captured_at: str
+    source: Literal["browser_geolocation"]
+
+    @model_validator(mode="after")
+    def aware_capture_time(self):
+        captured = datetime.fromisoformat(self.captured_at)
+        if captured.utcoffset() is None:
+            raise ValueError("Location capture time must include a timezone")
+        return self
+
+
 class SubmissionInput(StrictModel):
     description: Description
+    device_location: DeviceLocation
 
     @model_validator(mode="after")
     def meaningful_description(self):
         if not self.description.strip():
             raise ValueError("Describe the activity")
+        age = (datetime.now(timezone.utc) - datetime.fromisoformat(self.device_location.captured_at)).total_seconds()
+        if not -30 <= age <= 300:
+            raise ValueError("Capture a fresh device location before submitting")
         return self
 
 
@@ -112,6 +132,7 @@ class Attempt(StrictModel):
     citations: list[Citation]
     image_ids: list[str] = Field(default_factory=list)
     image_assessment: ImageAssessment | None = None
+    device_location: DeviceLocation | None = None
 
 
 class Revision(StrictModel):
@@ -119,6 +140,7 @@ class Revision(StrictModel):
     description: str
     created_at: str
     image_ids: list[str] = Field(default_factory=list)
+    device_location: DeviceLocation | None = None
 
 
 class ImageEvidence(StrictModel):
@@ -156,6 +178,7 @@ class SubmissionRecord(StrictModel):
     attempts: list[Attempt]
     reviews: list[ReviewEvent]
     images: list[ImageEvidence] = Field(default_factory=list)
+    device_location: DeviceLocation | None = None
 
 
 class SubmissionPage(StrictModel):

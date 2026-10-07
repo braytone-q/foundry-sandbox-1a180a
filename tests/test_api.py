@@ -1,3 +1,4 @@
+from tests.location_fixtures import fresh_location
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
@@ -8,7 +9,7 @@ from regen_api.foundry import AnalysisFailure
 
 
 def create(client, description="We planted 150 seedlings today at Kiptapkei and reported photos."):
-    r = client.post("/api/submissions", json={"description": description})
+    r = client.post("/api/submissions", json={"device_location": fresh_location(), "description": description})
     assert r.status_code == 201, r.text
     return r.json()
 
@@ -62,7 +63,7 @@ def test_revision_preserves_history_and_sends_only_current_description(app_bundl
     reviewed = client.post(f'/api/submissions/{original["id"]}/reviews',
                           json=review_body(original, "REQUEST_CLARIFICATION")).json()
     r = client.post(f'/api/submissions/{original["id"]}/revisions', json={
-        "description": "Corrected complete description", "expected_version": reviewed["version"]})
+        "device_location": fresh_location(), "description": "Corrected complete description", "expected_version": reviewed["version"]})
     assert r.status_code == 201, r.text
     updated = r.json()
     assert updated["description"] == "Corrected complete description"
@@ -118,7 +119,7 @@ def test_stale_and_final_mutations_are_rejected(client):
     assert client.post(base + "/reviews", json=review_body(record, "REJECT")).status_code == 409
     assert client.post(base + "/reviews", json=review_body(reviewed, "REJECT")).status_code == 409
     assert client.post(base + "/analyze", json={"expected_version": reviewed["version"]}).status_code == 409
-    assert client.post(base + "/revisions", json={"description": "changed", "expected_version": reviewed["version"]}).status_code == 409
+    assert client.post(base + "/revisions", json={"device_location": fresh_location(), "description": "changed", "expected_version": reviewed["version"]}).status_code == 409
 
 
 def test_concurrent_final_decisions_do_not_overwrite(client):
@@ -137,7 +138,7 @@ def test_running_attempt_blocks_mutations_and_restart_recovers(app_bundle):
     running = client.get(f'/api/submissions/{record["id"]}').json()
     assert running["latest_attempt"]["state"] == "RUNNING"
     for path, body in [("reviews", review_body(running)), ("analyze", {"expected_version": running["version"]}),
-                       ("revisions", {"description": "changed", "expected_version": running["version"]})]:
+                       ("revisions", {"device_location": fresh_location(), "description": "changed", "expected_version": running["version"]})]:
         assert client.post(f'/api/submissions/{record["id"]}/{path}', json=body).status_code == 409
     from regen_api.main import create_app
     with TestClient(create_app(settings, gateway), base_url="http://127.0.0.1") as restarted:
@@ -160,11 +161,11 @@ def test_queue_filters_and_pagination(client):
 
 
 def test_local_origin_host_and_content_type_boundaries(client):
-    assert client.post("/api/submissions", json={"description": "x"}, headers={"Origin": "https://evil.example"}).status_code == 403
+    assert client.post("/api/submissions", json={"device_location": fresh_location(), "description": "x"}, headers={"Origin": "https://evil.example"}).status_code == 403
     assert client.post("/api/submissions", content='{"description":"x"}', headers={"Content-Type": "text/plain"}).status_code == 415
     assert client.get("/api/health", headers={"Host": "evil.example"}).status_code == 400
-    assert client.post("/api/submissions", json={"description": "x"}, headers={"Origin": "http://127.0.0.1"}).status_code == 201
-    assert client.post("/api/submissions", json={"description": "x", "decision": "APPROVE"}).status_code == 422
+    assert client.post("/api/submissions", json={"device_location": fresh_location(), "description": "x"}, headers={"Origin": "http://127.0.0.1"}).status_code == 201
+    assert client.post("/api/submissions", json={"device_location": fresh_location(), "description": "x", "decision": "APPROVE"}).status_code == 422
     assert client.get("/api/submissions/missing").status_code == 404
 
 

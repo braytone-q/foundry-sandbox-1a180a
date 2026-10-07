@@ -166,6 +166,16 @@ function renderImageAssessment(assessment, count) {
   return box;
 }
 
+function locationDetails(fix) {
+  const box = node("div", null, "finding");
+  box.append(node("h3", "Device location at submission"));
+  if (!fix) { box.append(node("p", "No device coordinates were captured for this historical revision.")); return box; }
+  box.append(node("p", `Latitude ${fix.latitude.toFixed(6)} · Longitude ${fix.longitude.toFixed(6)}`),
+    node("p", `Reported accuracy ±${fix.accuracy_m.toFixed(1)} m · Captured ${date(fix.captured_at)}`),
+    node("p", "Reported by the submitting device. This is separate from the activity's reported place and does not authenticate the image's capture site."));
+  return box;
+}
+
 function renderDetail() {
   cancelConfirmation();
   revisionPicker?.clear(); revisionPicker = null;
@@ -178,7 +188,7 @@ function renderDetail() {
   heading.append(text, button("Refresh record ↻", refresh)); container.append(heading);
   const layout = node("div", null, "detail-layout"), main = node("div", null, "detail-main"), side = node("div", null, "detail-side");
   const source = card("The activity, in their words", `SOURCE DESCRIPTION · REVISION ${record.current_revision}`);
-  source.append(node("p", record.description, "source-text")); main.append(source);
+  source.append(node("p", record.description, "source-text"), locationDetails(record.device_location)); main.append(source);
   const photos = card(`Images supplied · ${(record.images || []).length}`, `SOURCE EVIDENCE · REVISION ${record.current_revision}`);
   photos.append(node("p", "Open an image to inspect its original. Images are supplied evidence; they do not authenticate the reported date, location or counts.", "field-help"));
   photos.append(record.images?.length ? imageGallery(record) : node("p", "No images supplied.", "field-help")); main.append(photos);
@@ -262,11 +272,19 @@ function revisionCard(record) {
   const submit = node("button", "Save revision & analyze ↗", "secondary"); submit.type = "submit";
   fields.append(submit); form.append(fields);
   if (record.latest_attempt?.state === "RUNNING") { fields.dataset.blocked = "true"; fields.disabled = true; box.append(node("p", "Wait for the running analysis before saving a revision.", "field-help")); }
-  form.addEventListener("submit", (event) => {
+  form.addEventListener("submit", async (event) => {
     event.preventDefault(); if (busy) return;
     const description = fields.querySelector("textarea").value;
     if (!description.trim()) { notice("Describe the activity before saving a revision.", true); return; }
-    mutate(picker.files.length ? "revisions/with-images" : "revisions", submissionBody(description, picker.files, record.version));
+    const sequence = routeSequence, files = picker.files;
+    setBusy(true); notice("Obtaining a fresh device location before saving the revision…");
+    try {
+      const fix = await captureDeviceLocation();
+      if (sequence !== routeSequence || current?.id !== record.id) throw new Error("The viewed activity changed. No revision was saved; inspect the record before trying again.");
+      setBusy(false);
+      await mutate(files.length ? "revisions/with-images" : "revisions", submissionBody(description, files, record.version, fix), record.id);
+    } catch (error) { notice(error.message, true); }
+    finally { setBusy(false); }
   });
   box.append(form); return box;
 }
@@ -288,6 +306,7 @@ function historyCard(record) {
         if (value.image_ids.length) entry.append(imageGallery(record, value.image_ids));
       }
       if (heading === "ANALYSIS ATTEMPTS" && value.image_ids?.length) entry.append(renderImageAssessment(value.image_assessment, value.image_ids.length));
+      if (heading !== "HUMAN REVIEW EVENTS") entry.append(locationDetails(value.device_location));
     }
   }
   return box;
@@ -326,9 +345,14 @@ $("#submission-form").addEventListener("submit", async (event) => {
   event.preventDefault(); if (busy) return;
   const description = $("#description").value;
   if (!description.trim()) { notice("Describe the activity before submitting.", true); return; }
+  const sequence = routeSequence, files = submissionPicker.files;
   setBusy(true); notice(""); $("#submit-progress").hidden = false;
+  $("#submit-progress").textContent = "Obtaining your device location. Allow location access when the browser asks…";
   try {
-    const record = await api(submissionPicker.files.length ? "/api/submissions/with-images" : "/api/submissions", submissionBody(description, submissionPicker.files));
+    const fix = await captureDeviceLocation();
+    if (sequence !== routeSequence) throw new Error("Navigation changed. No activity was submitted; return to your draft and try again.");
+    $("#submit-progress").textContent = "Saving your activity and inspecting image content against the description, then checking approved rules…";
+    const record = await api(files.length ? "/api/submissions/with-images" : "/api/submissions", submissionBody(description, files, undefined, fix));
     submissionPicker.clear();
     $("#submission-form").reset(); $("#character-count").textContent = "0 / 16,000";
     showDetail(record.id); notice(record.latest_attempt.state === "FAILED" ? "Your activity is saved. Analysis needs attention; you can retry from its record." : "Your activity and AI analysis are saved. A human decision is still required.");

@@ -80,6 +80,10 @@ class Store:
                     UNIQUE(submission_id, revision, position),
                     FOREIGN KEY(submission_id, revision)
                         REFERENCES submission_revisions(submission_id, revision))""",
+                """CREATE TABLE IF NOT EXISTS revision_locations (
+                    submission_id TEXT NOT NULL, revision INTEGER NOT NULL, location_json TEXT NOT NULL,
+                    PRIMARY KEY(submission_id, revision),
+                    FOREIGN KEY(submission_id, revision) REFERENCES submission_revisions(submission_id, revision))""",
             ):
                 db.execute(statement)
             if "image_assessment_json" not in {r[1] for r in db.execute("PRAGMA table_info(analysis_attempts)")}:
@@ -163,16 +167,25 @@ class Store:
         for position, image_id in enumerate(ids):
             db.execute("INSERT INTO revision_images VALUES (?, ?, ?, ?)", (id, revision, image_id, position))
 
-    def create(self, description, agent_name, agent_version, images=None):
+    def _save_location(self, db, id, revision, location):
+        if location is not None:
+            db.execute("INSERT INTO revision_locations VALUES (?, ?, ?)", (id, revision, json.dumps(location)))
+
+    def _location(self, db, id, revision):
+        row = db.execute("SELECT location_json FROM revision_locations WHERE submission_id=? AND revision=?", (id, revision)).fetchone()
+        return json.loads(row[0]) if row else None
+
+    def create(self, description, agent_name, agent_version, images=None, device_location=None):
         id, timestamp = str(uuid4()), now()
         with self.source_write() as (db, created):
             db.execute("INSERT INTO submissions VALUES (?, 1, 1, 'PENDING_REVIEW', ?, ?)",
                        (id, timestamp, timestamp))
             db.execute("INSERT INTO submission_revisions VALUES (?, 1, ?, ?)", (id, description, timestamp))
             self._save_images(db, id, 1, [], images or [], created)
+            self._save_location(db, id, 1, device_location)
             return self._attempt(db, id, 1, description, agent_name, agent_version, timestamp)
 
-    def begin_attempt(self, id, expected_version, agent_name, agent_version, description=None, images=None):
+    def begin_attempt(self, id, expected_version, agent_name, agent_version, description=None, images=None, device_location=None):
         with self.source_write() as (db, created):
             row, _ = self._mutable(db, id, expected_version)
             revision, status, timestamp = row["current_revision"], row["review_status"], now()
@@ -183,6 +196,7 @@ class Store:
                 db.execute("INSERT INTO submission_revisions VALUES (?, ?, ?, ?)",
                            (id, revision, description, timestamp))
                 self._save_images(db, id, revision, existing, images or [], created)
+                self._save_location(db, id, revision, device_location)
             else:
                 description = db.execute("""SELECT description FROM submission_revisions
                     WHERE submission_id=? AND revision=?""", (id, revision)).fetchone()[0]
@@ -242,7 +256,10 @@ class Store:
             FROM submission_revisions WHERE submission_id=? ORDER BY revision""", (id,))]
         for revision in record["revisions"]:
             revision["image_ids"] = [image["id"] for image in self._image_rows(db, id, revision["revision"])]
+            revision["device_location"] = self._location(db, id, revision["revision"])
         image_ids = {r["revision"]: r["image_ids"] for r in record["revisions"]}
+        locations = {r["revision"]: r["device_location"] for r in record["revisions"]}
+        record["device_location"] = locations[record["current_revision"]]
         record["images"] = []
         for row in self._image_rows(db, id, record["current_revision"]):
             image = dict(row)
@@ -259,6 +276,7 @@ class Store:
             attempt["image_assessment"] = json.loads(attempt.pop("image_assessment_json") or "null")
             attempt["citations"] = json.loads(attempt.pop("citations_json"))
             attempt["image_ids"] = image_ids[attempt["revision"]]
+            attempt["device_location"] = locations[attempt["revision"]]
             attempts.append(attempt)
         record["attempts"] = attempts
         record["latest_attempt"] = next((a for a in attempts if a["revision"] == record["current_revision"]), None)

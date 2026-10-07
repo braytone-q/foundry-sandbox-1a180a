@@ -7,6 +7,7 @@
   <title>Re-gen · Conservation review</title>
   <link rel="stylesheet" href="/static/app.css">
   <script src="/static/images.js" defer></script>
+  <script src="/static/location.js" defer></script>
   <script src="/static/app.js" defer></script>
 </head>
 <body>
@@ -35,6 +36,7 @@
             <textarea id="description" name="description" rows="9" required maxlength="16000" aria-describedby="description-help" placeholder="For example: Our community group planted seedlings today. Describe the place, quantity, species and evidence you can report…"></textarea>
             <div class="input-meta"><span>Your words and images are saved for review.</span><span id="character-count">0 / 16,000</span></div>
             <div id="submission-images" class="image-picker"></div>
+            <p class="field-help">Device coordinates are required. When you submit, allow the browser to capture your current location. Latitude, longitude, accuracy and capture time are saved with this revision.</p>
             <div class="form-footer"><p>Your original words are saved.<br>AI analysis does not make a human decision.</p><button type="submit" class="primary" id="submit-button">Prepare for review <span aria-hidden="true">↗</span></button></div>
             </fieldset>
             <p id="submit-progress" class="progress" role="status" hidden>Saving your activity and checking the approved knowledge source. This may take a moment…</p>

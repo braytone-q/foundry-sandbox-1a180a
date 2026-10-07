@@ -1,10 +1,12 @@
 import sqlite3
+import json
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Literal
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
@@ -86,28 +88,33 @@ def create_app(settings=None, gateway=None):
     async def invalid_upload(request, exc):
         return JSONResponse({"detail": exc.message}, status_code=exc.status)
 
+    @app.exception_handler(RequestValidationError)
+    async def invalid_request(request, exc):
+        # Never echo nonfinite numbers, coordinates, or user input in error bodies.
+        return JSONResponse({"detail": "Check required fields, fresh device coordinates, value types and limits, then retry."}, status_code=422)
+
     async def validate_form(request, fields):
         form = await request.form()
         if set(form.keys()) != fields or any(len(form.getlist(key)) != 1 for key in fields - {"images"}):
             raise HTTPException(422, "Use only the required description, version and image fields.")
 
     @app.post("/api/submissions/with-images", response_model=SubmissionRecord, status_code=201)
-    async def create_images(request: Request, description: Annotated[str, Form()], images: Annotated[list[UploadFile], File()]):
-        await validate_form(request, {"description", "images"})
+    async def create_images(request: Request, description: Annotated[str, Form()], device_location: Annotated[str, Form()], images: Annotated[list[UploadFile], File()]):
+        await validate_form(request, {"description", "device_location", "images"})
         try:
-            input = SubmissionInput(description=description)
-        except ValidationError:
-            raise HTTPException(422, "Supply a meaningful description of at most 16,000 characters.")
+            input = SubmissionInput(description=description, device_location=json.loads(device_location))
+        except (ValidationError, ValueError, TypeError):
+            raise HTTPException(422, "Supply a meaningful description and fresh valid device coordinates.")
         return await run_in_threadpool(service.upload, input, images)
 
     @app.post("/api/submissions/{id}/revisions/with-images", response_model=SubmissionRecord, status_code=201)
     async def revise_images(id: str, request: Request, description: Annotated[str, Form()],
-                            expected_version: Annotated[int, Form(ge=1)], images: Annotated[list[UploadFile], File()]):
-        await validate_form(request, {"description", "expected_version", "images"})
+                            expected_version: Annotated[int, Form(ge=1)], device_location: Annotated[str, Form()], images: Annotated[list[UploadFile], File()]):
+        await validate_form(request, {"description", "expected_version", "device_location", "images"})
         try:
-            input = RevisionInput(description=description, expected_version=expected_version)
-        except ValidationError:
-            raise HTTPException(422, "Supply a meaningful description of at most 16,000 characters and the viewed version.")
+            input = RevisionInput(description=description, expected_version=expected_version, device_location=json.loads(device_location))
+        except (ValidationError, ValueError, TypeError):
+            raise HTTPException(422, "Supply a meaningful description, fresh device coordinates and the viewed version.")
         return await run_in_threadpool(service.upload, input, images, id)
 
     @app.get("/api/images/{id}", include_in_schema=True)

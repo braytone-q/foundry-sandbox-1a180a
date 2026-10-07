@@ -104,6 +104,9 @@ def test_failed_or_ungrounded_responses_are_visible_failures(kind):
     ("RetryInput", {"expected_version": True}),
 ])
 def test_request_boundaries_reject_blank_extra_or_authoritative_inputs(model, data):
+    if model == "SubmissionInput":
+        from tests.location_fixtures import fresh_location
+        data = data | {"device_location": fresh_location()}
     from regen_api import schemas
     with pytest.raises(ValidationError):
         getattr(schemas, model).model_validate(data)

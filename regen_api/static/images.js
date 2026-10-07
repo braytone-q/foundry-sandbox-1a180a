@@ -65,9 +65,13 @@ class ImagePicker {
     }));
   }
 }
-function submissionBody(description, files, expectedVersion) {
-  if (!files.length) return expectedVersion === undefined ? {description} : {description, expected_version: expectedVersion};
+function submissionBody(description, files, expectedVersion, deviceLocation) {
+  if (!files.length) {
+    const body = expectedVersion === undefined ? {description} : {description, expected_version: expectedVersion};
+    if (deviceLocation) body.device_location = deviceLocation; return body;
+  }
   const body = new FormData(); body.append("description", description);
+  if (deviceLocation) body.append("device_location", JSON.stringify(deviceLocation));
   if (expectedVersion !== undefined) body.append("expected_version", String(expectedVersion));
   files.forEach(file => body.append("images", file, file.name)); return body;
 }

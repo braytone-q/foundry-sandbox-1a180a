@@ -1,3 +1,5 @@
+import json
+from tests.location_fixtures import fresh_location
 import hashlib
 import io
 import struct
@@ -24,7 +26,7 @@ def parts(number=1, blob=None, filename="photo.png", content_type="image/png"):
 
 
 def upload(client, number=1, **kwargs):
-    return client.post("/api/submissions/with-images", data={"description": "We planted seedlings and supplied photographs."},
+    return client.post("/api/submissions/with-images", data={"device_location": json.dumps(fresh_location()), "description": "We planted seedlings and supplied photographs."},
                        files=parts(number, **kwargs))
 
 
@@ -74,7 +76,7 @@ def test_twenty_one_images_is_rejected_as_a_whole(app_bundle):
                                          (picture()[:-15], 422), (picture(animated=True), 415)])
 def test_invalid_or_animated_batch_leaves_no_partial_submission(app_bundle, blob, status):
     client = app_bundle[0]
-    result = client.post("/api/submissions/with-images", data={"description": "Source"},
+    result = client.post("/api/submissions/with-images", data={"device_location": json.dumps(fresh_location()), "description": "Source"},
                          files=parts() + parts(blob=blob))
     assert result.status_code == status, result.text
     assert_no_records_or_files(app_bundle)
@@ -97,7 +99,7 @@ def test_decode_dimensions_are_limited_before_loading(app_bundle, width, height)
 
 
 def test_filename_never_becomes_a_storage_path(client):
-    result = client.post("/api/submissions/with-images", data={"description": "Source"},
+    result = client.post("/api/submissions/with-images", data={"device_location": json.dumps(fresh_location()), "description": "Source"},
                          files=[("images", ('../../<script>alert(1)</script>.png', picture(), "image/png"))])
     assert result.status_code == 201, result.text
     image = result.json()["images"][0]
@@ -107,11 +109,11 @@ def test_filename_never_becomes_a_storage_path(client):
 
 def test_form_fields_and_origin_are_strict(app_bundle):
     client = app_bundle[0]
-    assert client.post("/api/submissions/with-images", data={"description": "Source", "decision": "APPROVE"}, files=parts()).status_code == 422
-    assert client.post("/api/submissions/with-images", data={"description": " "}, files=parts()).status_code == 422
-    assert client.post("/api/submissions/with-images", data={"description": "Source"}, files=parts(),
+    assert client.post("/api/submissions/with-images", data={"device_location": json.dumps(fresh_location()), "description": "Source", "decision": "APPROVE"}, files=parts()).status_code == 422
+    assert client.post("/api/submissions/with-images", data={"device_location": json.dumps(fresh_location()), "description": " "}, files=parts()).status_code == 422
+    assert client.post("/api/submissions/with-images", data={"device_location": json.dumps(fresh_location()), "description": "Source"}, files=parts(),
                        headers={"Origin": "https://evil.example"}).status_code == 403
-    assert client.post("/api/submissions", data={"description": "Source"}, files=parts()).status_code == 415
+    assert client.post("/api/submissions", data={"device_location": json.dumps(fresh_location()), "description": "Source"}, files=parts()).status_code == 415
     assert_no_records_or_files(app_bundle)
 
 
@@ -132,12 +134,12 @@ def test_revisions_retry_and_restart_keep_exact_image_history(app_bundle):
     client, _, gateway, settings = app_bundle
     first = upload(client, 1).json()
     base = f'/api/submissions/{first["id"]}'
-    second_response = client.post(base + "/revisions/with-images", data={"description": "Updated source", "expected_version": first["version"]}, files=parts(2))
+    second_response = client.post(base + "/revisions/with-images", data={"device_location": json.dumps(fresh_location()), "description": "Updated source", "expected_version": first["version"]}, files=parts(2))
     assert second_response.status_code == 201, second_response.text
     second = second_response.json()
     assert len(second["images"]) == 3
     assert len(second["revisions"][0]["image_ids"]) == 1 and len(second["revisions"][1]["image_ids"]) == 3
-    third = client.post(base + "/revisions", json={"description": "Text correction", "expected_version": second["version"]}).json()
+    third = client.post(base + "/revisions", json={"device_location": fresh_location(), "description": "Text correction", "expected_version": second["version"]}).json()
     assert len(third["images"]) == 3
     retried = client.post(base + "/analyze", json={"expected_version": third["version"]}).json()
     assert retried["latest_attempt"]["image_ids"] == third["latest_attempt"]["image_ids"]
@@ -163,7 +165,7 @@ def test_revision_count_stale_running_and_final_protection(app_bundle):
     record = upload(client, 20).json()
     base = f'/api/submissions/{record["id"]}'
     def revise(version):
-        return client.post(base + "/revisions/with-images", data={"description": "Updated", "expected_version": version}, files=parts())
+        return client.post(base + "/revisions/with-images", data={"device_location": json.dumps(fresh_location()), "description": "Updated", "expected_version": version}, files=parts())
     assert revise(record["version"] - 1).status_code == 409
     assert revise(record["version"]).status_code == 422
     assert client.get(base).json() == record
@@ -174,7 +176,7 @@ def test_revision_count_stale_running_and_final_protection(app_bundle):
     app.state.store.begin_attempt(separate["id"], separate["version"], "regen", "11")
     running = client.get(f'/api/submissions/{separate["id"]}').json()
     assert client.post(f'/api/submissions/{separate["id"]}/revisions/with-images',
-                       data={"description": "Update", "expected_version": running["version"]}, files=parts()).status_code == 409
+                       data={"device_location": json.dumps(fresh_location()), "description": "Update", "expected_version": running["version"]}, files=parts()).status_code == 409
 
 
 def test_failed_file_save_rolls_back_revision_and_preserves_earlier_files(app_bundle, monkeypatch):
@@ -190,7 +192,7 @@ def test_failed_file_save_rolls_back_revision_and_preserves_earlier_files(app_bu
         return original(self, target)
     monkeypatch.setattr(Path, "replace", fail_second)
     response = client.post(f'/api/submissions/{first["id"]}/revisions/with-images',
-                           data={"description": "Update", "expected_version": first["version"]}, files=parts(2))
+                           data={"device_location": json.dumps(fresh_location()), "description": "Update", "expected_version": first["version"]}, files=parts(2))
     assert response.status_code == 500 and "private storage" not in response.text
     assert client.get(f'/api/submissions/{first["id"]}').json() == first
     assert client.get(first["images"][0]["url"]).content == picture()

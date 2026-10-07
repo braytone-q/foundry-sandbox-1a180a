@@ -1,3 +1,5 @@
+import json
+from tests.location_fixtures import fresh_location
 import base64
 import hashlib
 import io
@@ -74,8 +76,8 @@ def test_current_revision_and_retry_supply_the_same_saved_images(app_bundle):
     client, _, gateway, _ = app_bundle
     first = upload(client, 2).json()
     base = f'/api/submissions/{first["id"]}'
-    revised = client.post(base + "/revisions/with-images", data={"description": "Updated account", "expected_version": first["version"]}, files=parts()).json()
-    latest = client.post(base + "/revisions", json={"description": "New words, same images", "expected_version": revised["version"]}).json()
+    revised = client.post(base + "/revisions/with-images", data={"device_location": json.dumps(fresh_location()), "description": "Updated account", "expected_version": first["version"]}, files=parts()).json()
+    latest = client.post(base + "/revisions", json={"device_location": fresh_location(), "description": "New words, same images", "expected_version": revised["version"]}).json()
     retried = client.post(base + "/analyze", json={"expected_version": latest["version"]}).json()
     assert len(gateway.image_batches[0]) == 2
     assert [image["id"] for image in gateway.image_batches[-1]] == retried["latest_attempt"]["image_ids"]

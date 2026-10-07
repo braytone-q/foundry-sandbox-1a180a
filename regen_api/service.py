@@ -17,11 +17,11 @@ class SubmissionService:
         return self.store.get(attempt["id"])
 
     def create(self, input, images=None):
-        return self._analyze(self.store.create(input.description, self.settings.agent_name, self.settings.agent_version, images))
+        return self._analyze(self.store.create(input.description, self.settings.agent_name, self.settings.agent_version, images, input.device_location.model_dump()))
 
     def revise(self, id, input, images=None):
         return self._analyze(self.store.begin_attempt(id, input.expected_version, self.settings.agent_name,
-                                                     self.settings.agent_version, input.description, images))
+                                                     self.settings.agent_version, input.description, images, input.device_location.model_dump()))
 
     def upload(self, input, files, id=None):
         images = prepare_images(files, self.store.evidence_dir)
