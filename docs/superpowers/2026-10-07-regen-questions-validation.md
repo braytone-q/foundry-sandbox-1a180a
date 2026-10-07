@@ -1,10 +1,15 @@
 # Ask Re-gen validation
 
 - Baseline before question mode: 122 passing tests.
-- Current complete suite: 160 passed in49.46 seconds. New coverage includes
+- Current complete suite: 174 passed in49.15 seconds. New coverage includes
   general and grounded paths, follow-up context, forced explicit programme
   retrieval, invalid route JSON, strict history/input limits, sanitized failures,
   safe citations, duplicate prevention, navigation, reset and retained drafts.
+- Final review found unfinished assistant/Search items could be accepted when
+  the outer response was completed. Fourteen regressions failed before the fix
+  and passed afterward. General routing messages, grounded answers and all Search
+  items now require affirmative completed status. Retrieving the prior live
+  programme response confirmed that valid Foundry items include that status.
 - Live initial forced-Search tests found unrelated programme citations attached
   to capitals and maths, even after tightening instructions. The automatic typed
   route now answers general questions without Search/citations. Re-gen/Green

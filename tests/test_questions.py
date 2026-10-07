@@ -10,6 +10,7 @@ from tests.test_contract import response
 def answer_response(text="Nairobi is the capital of Kenya."):
     result = response()
     result.output[-1].content[0].text = text
+    result.output[-1].status = 'completed'
     return result
 
 
@@ -138,3 +139,45 @@ def test_invalid_routing_reply_never_reaches_search_or_becomes_an_answer(app_bun
     result = client.post('/api/questions', json={'question': 'Hello'})
     assert result.status_code == 502 and len(calls) == 1
     assert 'private' not in result.text
+
+
+@pytest.mark.parametrize('stage', ['draft_general', 'draft_programme', 'grounded'])
+@pytest.mark.parametrize('status', ['in_progress', 'incomplete', None])
+def test_unfinished_assistant_items_never_become_answers(app_bundle, stage, status):
+    import json
+    client, _, gateway, settings = app_bundle
+    real = FoundryGateway(settings)
+    calls = []
+    def call(**kwargs):
+        calls.append(kwargs)
+        if 'text' in kwargs:
+            reply = answer_response(json.dumps({'needs_knowledge': stage != 'draft_general',
+                                               'answer': 'General answer' if stage == 'draft_general' else ''}))
+            reply.output.pop(0)
+            if stage.startswith('draft'):reply.output[-1].status = status
+        else:
+            reply = answer_response('Partial programme answer')
+            reply.output[-1].status = status
+        return reply
+    real._client = NS(responses=NS(create=call))
+    real._project = NS(connections=NS(get=lambda name: NS(id='approved-connection')))
+    gateway.ask = real.ask
+    result = client.post('/api/questions', json={'question': 'What is required?'})
+    assert result.status_code == 502
+    assert len(calls) == (2 if stage == 'grounded' else 1)
+    assert 'answer' not in result.json()
+
+
+@pytest.mark.parametrize('item,status', [
+    ('output', 'in_progress'), ('output', 'searching'), ('output', None),
+    ('call', 'in_progress'), ('call', None),
+])
+def test_unfinished_search_items_cannot_claim_completed_knowledge(app_bundle, item, status):
+    client, _, _, _ = app_bundle
+    reply = answer_response()
+    if item == 'output':reply.output[0].status = status
+    else:reply.output.insert(0, NS(type='azure_ai_search_call', status=status))
+    use_question_gateway(app_bundle, reply, needs_knowledge=True)
+    result = client.post('/api/questions', json={'question': 'What is required?'})
+    assert result.status_code == 502
+    assert result.json()['code'] == 'RETRIEVAL_MISSING'

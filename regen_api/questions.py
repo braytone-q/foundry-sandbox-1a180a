@@ -79,6 +79,8 @@ def assistant_content(response):
                 getattr(item, "role", "assistant") == "assistant"]
     if len(messages) != 1:
         raise AnalysisFailure("INVALID_ANSWER", "Invalid assistant message")
+    if getattr(messages[0], "status", None) != "completed":
+        raise AnalysisFailure("UPSTREAM_ERROR", "Incomplete assistant message")
     return [part for part in messages[0].content if part.type == "output_text"]
 
 
@@ -109,8 +111,10 @@ def answer_question(client, model, get_search_tool, question):
     )
     content = assistant_content(response)
     searches = [item for item in response.output if item.type == "azure_ai_search_call_output"]
-    if not searches or any(getattr(item, "error", None) or getattr(item, "status", None) in
-                          {"failed", "incomplete", "cancelled"} for item in searches):
+    search_items = [item for item in response.output if item.type in
+                    {"azure_ai_search_call", "azure_ai_search_call_output"}]
+    if not searches or any(getattr(item, "error", None) or getattr(item, "status", None) != "completed"
+                           for item in search_items):
         raise AnalysisFailure("RETRIEVAL_MISSING", "Incomplete retrieval")
     try:
         return QuestionAnswer(answer="".join(part.text for part in content).strip(),
