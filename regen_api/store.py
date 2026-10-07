@@ -82,6 +82,8 @@ class Store:
                         REFERENCES submission_revisions(submission_id, revision))""",
             ):
                 db.execute(statement)
+            if "image_assessment_json" not in {r[1] for r in db.execute("PRAGMA table_info(analysis_attempts)")}:
+                db.execute("ALTER TABLE analysis_attempts ADD COLUMN image_assessment_json TEXT")
 
     def _submission(self, db, id):
         row = db.execute("SELECT * FROM submissions WHERE id=?", (id,)).fetchone()
@@ -206,6 +208,8 @@ class Store:
                  json.dumps([c.model_dump() for c in result.citations]) if result else "[]", attempt_id))
             db.execute("UPDATE submissions SET version=version+1, updated_at=? WHERE id=?",
                        (timestamp, attempt["submission_id"]))
+            db.execute("UPDATE analysis_attempts SET image_assessment_json=? WHERE id=?",
+                (result.image_assessment.model_dump_json() if result and result.image_assessment else None, attempt_id))
 
     def review(self, id, input):
         with self.connection(True) as db:
@@ -248,10 +252,11 @@ class Store:
         record["description"] = record["revisions"][-1]["description"]
         attempts = []
         for r in db.execute("""SELECT id, revision, state, started_at, finished_at, agent_name,
-            agent_version, response_id, analysis_json, failure_code, failure_message, citations_json
+            agent_version, response_id, analysis_json, failure_code, failure_message, citations_json, image_assessment_json
             FROM analysis_attempts WHERE submission_id=? ORDER BY rowid DESC""", (id,)):
             attempt = dict(r)
             attempt["analysis"] = json.loads(attempt.pop("analysis_json") or "null")
+            attempt["image_assessment"] = json.loads(attempt.pop("image_assessment_json") or "null")
             attempt["citations"] = json.loads(attempt.pop("citations_json"))
             attempt["image_ids"] = image_ids[attempt["revision"]]
             attempts.append(attempt)

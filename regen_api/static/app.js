@@ -5,7 +5,9 @@ const labels = {
   APPROVED: "Approved by human", REJECTED: "Rejected by human",
   READY_FOR_HUMAN_REVIEW: "Ready for human review", NEEDS_CLARIFICATION: "Needs clarification",
   FLAG_FOR_REVIEW: "Flag for review", RUNNING: "Analysis running", FAILED: "Analysis failed",
-  SUCCEEDED: "Analysis complete", APPROVE: "Approve", REJECT: "Reject", REQUEST_CLARIFICATION: "Request clarification"
+  SUCCEEDED: "Analysis complete", APPROVE: "Approve", REJECT: "Reject", REQUEST_CLARIFICATION: "Request clarification",
+  SUPPORTS: "Visually consistent", MISMATCH: "Image mismatch", INCONCLUSIVE: "Image evidence inconclusive",
+  UNRELATED: "Unrelated evidence", CONTRADICTS: "Contradicts description", UNCLEAR: "Cannot determine"
 };
 let current = null, pendingReview = null, busy = false, offset = 0, total = 0, routeSequence = 0, queueSequence = 0;
 let revisionPicker = null;
@@ -20,9 +22,9 @@ function node(tag, text, className) {
 }
 function date(value) { return value ? new Date(value).toLocaleString() : "—"; }
 function badge(value) {
-  const tone = ["APPROVED", "READY_FOR_HUMAN_REVIEW", "SUCCEEDED"].includes(value) ? "green" :
-    ["REJECTED", "FAILED"].includes(value) ? "red" :
-    ["CLARIFICATION_REQUESTED", "NEEDS_CLARIFICATION", "FLAG_FOR_REVIEW"].includes(value) ? "amber" : "neutral";
+  const tone = ["APPROVED", "READY_FOR_HUMAN_REVIEW", "SUCCEEDED", "SUPPORTS"].includes(value) ? "green" :
+    ["REJECTED", "FAILED", "MISMATCH", "UNRELATED", "CONTRADICTS"].includes(value) ? "red" :
+    ["CLARIFICATION_REQUESTED", "NEEDS_CLARIFICATION", "FLAG_FOR_REVIEW", "INCONCLUSIVE", "UNCLEAR"].includes(value) ? "amber" : "neutral";
   return node("span", labels[value] || value, `tag ${tone}`);
 }
 function statusPair(record) {
@@ -146,7 +148,22 @@ async function loadQueue(sequence = routeSequence) {
 }
 function titleFor(record) {
   const activity = record.latest_attempt?.analysis?.activity_type;
-  return activity ? activity.replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase()) : "Conservation activity";
+  return activity ? "Reported: " + activity.replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase()) : "Conservation activity";
+}
+
+function renderImageAssessment(assessment, count) {
+  const box = card("Do the images support the description?", "IMAGE CONTENT CHECK");
+  if (!assessment) {
+    box.append(node("p", count ? "Image inspection was not recorded for this attempt. Reanalyze to apply the updated checks." : "No images supplied for comparison.", "field-help"));
+    return box;
+  }
+  box.append(badge(assessment.overall), node("p", "Visual consistency does not authenticate the date, exact quantity, activity site or who performed the work. A person makes the final decision.", "field-help"));
+  for (const image of assessment.images) {
+    const entry = node("div", null, "finding");
+    entry.append(node("h3", `Image ${image.image_number}: ${image.filename}`), badge(image.verdict),
+      node("p", image.visible_content), node("p", image.explanation)); box.append(entry);
+  }
+  return box;
 }
 
 function renderDetail() {
@@ -165,11 +182,12 @@ function renderDetail() {
   const photos = card(`Images supplied · ${(record.images || []).length}`, `SOURCE EVIDENCE · REVISION ${record.current_revision}`);
   photos.append(node("p", "Open an image to inspect its original. Images are supplied evidence; they do not authenticate the reported date, location or counts.", "field-help"));
   photos.append(record.images?.length ? imageGallery(record) : node("p", "No images supplied.", "field-help")); main.append(photos);
+  main.append(renderImageAssessment(attempt?.image_assessment, record.images?.length || 0));
   const ai = card("AI analysis", attempt ? `FOUNDRY AGENT ${attempt.agent_name} · VERSION ${attempt.agent_version}` : "NO ATTEMPT");
   if (analysis) {
     ai.append(badge(analysis.recommendation));
     const facts = node("dl", null, "facts");
-    for (const [key, label] of [["activity_type", "Activity"], ["quantity", "Quantity"], ["species", "Species"], ["species_category", "Species category"], ["activity_date", "Activity date as reported"], ["location", "Location"], ["community_group", "Community group"]]) {
+    for (const [key, label] of [["activity_type", "Reported activity"], ["quantity", "Reported quantity"], ["species", "Species"], ["species_category", "Species category"], ["activity_date", "Activity date as reported"], ["location", "Reported activity location"], ["community_group", "Community group"]]) {
       const fact = node("div"); fact.append(node("dt", label), node("dd", analysis[key] ?? "Not stated")); facts.append(fact);
     }
     ai.append(facts, node("h3", "Why this recommendation"), node("p", analysis.reason, "reason"));
@@ -269,6 +287,7 @@ function historyCard(record) {
         entry.append(node("p", `${value.image_ids.length} image${value.image_ids.length === 1 ? "" : "s"} in this ${heading === "SOURCE REVISIONS" ? "revision" : "analysis attempt"}`, "field-help"));
         if (value.image_ids.length) entry.append(imageGallery(record, value.image_ids));
       }
+      if (heading === "ANALYSIS ATTEMPTS" && value.image_ids?.length) entry.append(renderImageAssessment(value.image_assessment, value.image_ids.length));
     }
   }
   return box;

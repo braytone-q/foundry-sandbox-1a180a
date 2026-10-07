@@ -8,6 +8,7 @@ class Settings:
     endpoint: str = "https://veloking45-8432-resource.services.ai.azure.com/api/projects/regen-agentic-ai"
     agent_name: str = "regen"
     agent_version: str = "11"
+    image_model: str = "gpt-5-mini"
     database_path: Path = Path("runtime/regen.sqlite3")
     timeout_seconds: float = 90.0
 
@@ -20,6 +21,7 @@ class Settings:
             endpoint=os.getenv("REGEN_PROJECT_ENDPOINT", cls.endpoint),
             agent_name=os.getenv("REGEN_AGENT_NAME", "regen"),
             agent_version=os.getenv("REGEN_AGENT_VERSION", "11"),
+            image_model=os.getenv("REGEN_IMAGE_MODEL", "gpt-5-mini"),
             database_path=Path(os.getenv("REGEN_DATABASE_PATH", "runtime/regen.sqlite3")),
             timeout_seconds=timeout,
         )

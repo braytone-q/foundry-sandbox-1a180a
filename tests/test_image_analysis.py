@@ -10,22 +10,23 @@ from regen_api.foundry import AnalysisFailure, FoundryGateway, parse_response
 from regen_api.settings import Settings
 from tests.test_contract import payload, response
 from tests.test_images import parts, picture, upload
+from tests.test_image_consistency import vision_response
 
 
 def test_twenty_saved_images_are_actual_response_inputs(tmp_path):
     calls = []
     gateway = FoundryGateway(Settings())
-    gateway._client = NS(responses=NS(create=lambda **kw: calls.append(kw) or response()))
+    gateway._client = NS(responses=NS(create=lambda **kw: calls.append(kw) or (vision_response(("SUPPORTS",) * 20) if "model" in kw else response())))
     images = []
     for number in range(20):
         path = tmp_path / f"{number}.png"
         path.write_bytes(picture())
-        images.append({"path": path, "filename": f"photo-{number}.png"})
+        images.append({"id": str(number), "path": path, "filename": f"photo-{number}.png"})
     result = gateway.analyze("Test-only images; no activity occurred.", images)
     content = calls[0]["input"][0]["content"]
     actual = [part for part in content if part["type"] == "input_image"]
-    assert len(actual) == 20 and calls[0]["tool_choice"] == "required"
-    assert calls[0]["extra_body"]["agent_reference"]["version"] == "11"
+    assert len(actual) == 20 and calls[1]["tool_choice"] == "required"
+    assert calls[1]["extra_body"]["agent_reference"]["version"] == "11"
     for part in actual:
         assert part["image_url"].startswith("data:image/jpeg;base64,")
         with Image.open(io.BytesIO(base64.b64decode(part["image_url"].split(",", 1)[1]))) as decoded:

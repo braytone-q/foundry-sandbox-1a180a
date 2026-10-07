@@ -24,7 +24,7 @@
 - Stale/missing/invalid coordinates must fail before files or analysis are saved; old records must still render.
 - A failed second model call, retry or migration must retain original files and immutable revision provenance.
 
-## Task1: Inspect image relevance and gate recommendations
+## Task 1: Inspect image relevance and gate recommendations
 
 **Files:** Create regen_api/vision.py, tests/test_image_consistency.py; modify foundry.py, schemas.py, store.py, settings.py, app.js, tests/test_image_analysis.py, controlled gateways.
 **Interfaces:** inspect_images(client, model, description, images)->ImageAssessment; apply_image_assessment(Analysis,ImageAssessment)->Analysis. AnalysisResult.image_assessment optional. Store additive analysis_attempts.image_assessment_json, Attempt.image_assessment optional.
@@ -35,7 +35,7 @@
 - [ ] Run full `.venv/bin/python -m pytest -q`; expect all pass, including existing storage/history.
 - [ ] Commit only task files; task-done records fresh full-suite verification.
 
-## Task2: Require device coordinates in storage and submit flows
+## Task 2: Require device coordinates in storage and submit flows
 
 **Files:** Create static/location.js, tests/test_location.py, tests/browser_location.cjs; modify schemas.py, store.py, service.py, main.py, index.html, app.js, images.js and request test helpers.
 **Interfaces:** DeviceLocation strict numeric/aware timestamp; SubmissionInput.device_location required. Store.create(...device_location), begin_attempt(...device_location) snapshot and API current/revision/attempt responses. captureDeviceLocation()->Promise<object> rejects missing permission/fix. submissionBody(description,files,version,deviceLocation) adds JSON or multipart field.
@@ -46,7 +46,7 @@
 - [ ] Update existing valid input fixtures to supply current test coordinates; keep deliberate invalid/missing cases raw. Run full suite and Node/JS syntax checks; expect green.
 - [ ] Commit only task files and ledger verification.
 
-## Task3: Verify live behavior and document testing
+## Task 3: Verify live behavior and document testing
 
 **Files:** Modify INSTRUCTIONS.md (select only own changes) and save validation notes in docs/superpowers.
 **Interfaces:** Real server uses final schema; existing records and the user's latest image retained.

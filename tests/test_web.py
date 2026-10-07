@@ -37,7 +37,7 @@ def test_source_script_markup_round_trips_as_data(client):
 
 
 @pytest.mark.skipif(shutil.which("node") is None, reason="Node is needed for browser response-ordering checks")
-@pytest.mark.parametrize("case", ["refresh", "filters", "confirmation", "image_draft"])
+@pytest.mark.parametrize("case", ["refresh", "filters", "confirmation", "image_draft", "image_comparison"])
 def test_browser_response_ordering(case):
     result = subprocess.run(["node", "tests/browser_races.cjs", case], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr

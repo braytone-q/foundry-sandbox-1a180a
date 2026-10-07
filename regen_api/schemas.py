@@ -81,6 +81,22 @@ class Citation(StrictModel):
     url: str
 
 
+class ImageComparison(StrictModel):
+    image_id: str
+    filename: str
+    image_number: int
+    verdict: Literal["SUPPORTS", "UNRELATED", "CONTRADICTS", "UNCLEAR"]
+    visible_content: str
+    explanation: str
+
+
+class ImageAssessment(StrictModel):
+    overall: Literal["SUPPORTS", "MISMATCH", "INCONCLUSIVE"]
+    model: str
+    response_id: str | None
+    images: list[ImageComparison]
+
+
 class Attempt(StrictModel):
     id: str
     revision: int
@@ -95,6 +111,7 @@ class Attempt(StrictModel):
     failure_message: str | None
     citations: list[Citation]
     image_ids: list[str] = Field(default_factory=list)
+    image_assessment: ImageAssessment | None = None
 
 
 class Revision(StrictModel):

@@ -111,7 +111,17 @@ async function navigationRetainsImageDraft() {
   assert.equal(h.run("submissionBody($('#description').value, submissionPicker.files).getAll('images')[0].name"), "photo.png");
 }
 
-const checks = {refresh: refreshCannotRedirectReview, filters: latestFilterWins, confirmation: confirmationStaysBoundToRecord, image_draft: navigationRetainsImageDraft};
+async function imageComparisonIsVisibleAndSafe() {
+  const h = harness();
+  const card = h.run(`renderImageAssessment({overall:'MISMATCH', model:'gpt-5-mini', images:[{image_number:1,filename:'photo.png',verdict:'UNRELATED',visible_content:'<script>poster</script>',explanation:'This is a poster, not an observed event.'}]},1)`);
+  function flatten(el) { return [el, ...el.children.flatMap(flatten)]; }
+  assert.equal(flatten(card).some(el => el.textContent === 'Image mismatch'), true);
+  assert.equal(flatten(card).some(el => el.textContent === '<script>poster</script>'), true);
+  assert.equal(flatten(card).some(el => el.innerHTML), false);
+  const legacy = h.run('renderImageAssessment(null, 1)');
+  assert.equal(flatten(legacy).some(el => el.textContent?.includes('not recorded')), true);
+}
+const checks = {refresh: refreshCannotRedirectReview, filters: latestFilterWins, confirmation: confirmationStaysBoundToRecord, image_draft: navigationRetainsImageDraft, image_comparison:imageComparisonIsVisibleAndSafe};
 const check = checks[process.argv[2]];
 if (!check) throw new Error("Choose refresh, filters or confirmation");
 check().then(() => console.log(`PASS ${process.argv[2]}`)).catch((error) => { console.error(error); process.exitCode = 1; });
