@@ -204,6 +204,17 @@ class Store:
                 review_status=?, updated_at=? WHERE id=?""", (revision, status, timestamp, id))
             return self._attempt(db, id, revision, description, agent_name, agent_version, timestamp)
 
+    def save_image_assessment(self, attempt_id, assessment):
+        """Commit a completed inspection before the subsequent remote rule analysis."""
+        with self.connection(True) as db:
+            attempt = db.execute("SELECT state, image_assessment_json FROM analysis_attempts WHERE id=?", (attempt_id,)).fetchone()
+            if attempt is None:
+                raise NotFound("Analysis attempt not found.")
+            if attempt["state"] != "RUNNING" or attempt["image_assessment_json"] is not None:
+                raise Conflict("This attempt cannot accept another image inspection.")
+            db.execute("UPDATE analysis_attempts SET image_assessment_json=? WHERE id=?",
+                       (assessment.model_dump_json(), attempt_id))
+
     def finish_attempt(self, attempt_id, result=None, failure=None):
         if (result is None) == (failure is None):
             raise ValueError("Provide one result or failure")
@@ -222,7 +233,7 @@ class Store:
                  json.dumps([c.model_dump() for c in result.citations]) if result else "[]", attempt_id))
             db.execute("UPDATE submissions SET version=version+1, updated_at=? WHERE id=?",
                        (timestamp, attempt["submission_id"]))
-            db.execute("UPDATE analysis_attempts SET image_assessment_json=? WHERE id=?",
+            db.execute("UPDATE analysis_attempts SET image_assessment_json=COALESCE(image_assessment_json, ?) WHERE id=?",
                 (result.image_assessment.model_dump_json() if result and result.image_assessment else None, attempt_id))
 
     def review(self, id, input):

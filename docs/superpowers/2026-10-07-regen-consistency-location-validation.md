@@ -1,10 +1,17 @@
 # Image consistency and device location validation
 
 - Baseline: 79 tests passed before this phase.
-- Current suite: 119 tests passed in 35.12 seconds. Covers mismatch and uncertainty
+- Current suite: 122 tests passed in 35.88 seconds. Covers mismatch and uncertainty
   guards, exact per-image coverage, failed provider calls, required coordinate
   ranges/freshness and multipart parsing, location revision/retry persistence,
   location permission failure/deadline, retained drafts and navigation identity.
+- Final review found completed image inspections were lost if the later Search
+  call failed. Inspections now commit before that call and survive failure or
+  interruption. Four regressions failed before the fix and passed afterward:
+  Search timeout, missing retrieval, invalid output, and restart between calls.
+  Failed/interrupted attempts retain no completed analysis and cannot be reviewed.
+- Restart verification preserved all eight records and 47 image originals,
+  including device locations and inspection snapshots.
 - Existing Foundry agent regen11, Search index and permissions are unchanged.
   A separate strict vision call uses the existing gpt-5-mini deployment.
 - The latest actual user poster, record 9ef2e71f-1d06-4644-ac36-5821f06231df,

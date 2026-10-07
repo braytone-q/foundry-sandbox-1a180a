@@ -9,7 +9,8 @@ class SubmissionService:
     def _analyze(self, attempt):
         # Source and RUNNING state are already committed; never hold a DB lock across Azure.
         try:
-            result = self.gateway.analyze(attempt["description"], attempt["images"])
+            result = self.gateway.analyze(attempt["description"], attempt["images"],
+                on_image_assessment=lambda assessment: self.store.save_image_assessment(attempt["attempt_id"], assessment))
         except Exception as exc:
             self.store.finish_attempt(attempt["attempt_id"], failure=safe_failure(exc))
         else:

@@ -16,7 +16,7 @@ class ControlledGateway:
         self.descriptions = []
         self.image_batches = []
 
-    def analyze(self, description, images=None):
+    def analyze(self, description, images=None, on_image_assessment=None):
         self.descriptions.append(description)
         self.image_batches.append(images or [])
         if self.failure:

@@ -119,13 +119,15 @@ class FoundryGateway:
                 )
         return self._client
 
-    def analyze(self, description: str, images=None) -> AnalysisResult:
+    def analyze(self, description: str, images=None, on_image_assessment=None) -> AnalysisResult:
         try:
             from .vision import apply_image_assessment, inspect_images
             images = images or []
             receipts = [f"Image {number}: {image['filename']}" for number, image in enumerate(images, 1)]
             client = self._get_client()
             assessment = inspect_images(client, self.settings.image_model, description, images) if images else None
+            if assessment is not None and on_image_assessment is not None:
+                on_image_assessment(assessment)
             content = [{"type": "input_text", "text": "Reported activity description: " + json.dumps(description)}]
             if images:
                 content.append({"type": "input_text", "text": (

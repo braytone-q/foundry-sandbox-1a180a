@@ -80,18 +80,66 @@ def test_inspection_is_persisted_on_attempt_and_retry(app_bundle):
     assert retried["review_status"]=="PENDING_REVIEW" and not retried["reviews"]
 
 
-def test_failed_second_call_keeps_source_and_originals(app_bundle):
+@pytest.mark.parametrize("failure_kind,failure_code", [
+    ("timeout", "TIMEOUT"), ("retrieval", "RETRIEVAL_MISSING"),
+    ("invalid", "INVALID_ANALYSIS"),
+])
+def test_failed_second_call_keeps_source_originals_and_inspection(app_bundle, failure_kind, failure_code):
     client,_,gateway,settings=app_bundle
     real=FoundryGateway(settings)
     def call(**kw):
         if "model" in kw:return vision_response()
-        raise TimeoutError("private details")
+        if failure_kind == "timeout":raise TimeoutError("private details")
+        if failure_kind == "retrieval":return response(retrieval=False)
+        return response(payload() | {"reason": " "})
     real._client=NS(responses=NS(create=call));gateway.analyze=real.analyze
     record=upload(client).json()
     assert record["latest_attempt"]["state"]=="FAILED"
     assert record["latest_attempt"]["analysis"] is None
+    assert record["latest_attempt"]["failure_code"] == failure_code
+    assessment = record["latest_attempt"]["image_assessment"]
+    assert assessment is not None
+    assert assessment["overall"] == "MISMATCH" and assessment["response_id"] == "vision-test"
+    assert assessment["images"][0]["image_id"] == record["images"][0]["id"]
+    assert record["latest_attempt"]["device_location"] == record["device_location"]
     assert "private" not in record["latest_attempt"]["failure_message"]
     assert client.get(record["images"][0]["url"]).content==picture()
+    assert client.post(f'/api/submissions/{record["id"]}/reviews', json={
+        "action": "APPROVE", "reviewer_name": "Test verifier", "notes": "Must remain blocked.",
+        "expected_version": record["version"],
+    }).status_code == 409
+
+
+def test_restart_between_vision_and_search_keeps_completed_inspection(app_bundle):
+    from fastapi.testclient import TestClient
+    from regen_api.main import create_app
+    from tests.conftest import ControlledGateway
+
+    class SimulatedProcessStop(BaseException):
+        pass
+
+    client, app, gateway, settings = app_bundle
+    original = upload(client).json()
+    attempt = app.state.store.begin_attempt(original["id"], original["version"], "regen", "11")
+    real = FoundryGateway(settings)
+    observed = []
+    def call(**kw):
+        if "model" in kw:return vision_response()
+        observed.append(app.state.store.get(original["id"])["latest_attempt"])
+        raise SimulatedProcessStop()
+    real._client = NS(responses=NS(create=call));gateway.analyze = real.analyze
+    with pytest.raises(SimulatedProcessStop):
+        app.state.service._analyze(attempt)
+    assert observed[0]["state"] == "RUNNING"
+    assert observed[0]["image_assessment"] is not None
+    with TestClient(create_app(settings, ControlledGateway()), base_url="http://127.0.0.1") as restarted:
+        recovered = restarted.get(f'/api/submissions/{original["id"]}').json()
+        latest = recovered["latest_attempt"]
+        assert latest["failure_code"] == "INTERRUPTED" and latest["analysis"] is None
+        assert latest["image_assessment"] == observed[0]["image_assessment"]
+        assert latest["image_assessment"]["overall"] == "MISMATCH"
+        assert recovered["device_location"] == original["device_location"]
+        assert restarted.get(original["images"][0]["url"]).content == picture()
 
 
 def test_saved_agent_uses_supported_request_and_actual_receipt_strings(tmp_path):
