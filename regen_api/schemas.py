@@ -101,6 +101,50 @@ class Citation(StrictModel):
     url: str
 
 
+QuestionText = Annotated[str, StringConstraints(min_length=1, max_length=4000)]
+ConversationText = Annotated[str, StringConstraints(min_length=1, max_length=12000)]
+
+
+class QuestionMessage(StrictModel):
+    role: Literal["user", "assistant"]
+    content: ConversationText
+
+    @model_validator(mode="after")
+    def meaningful_content(self):
+        if not self.content.strip():
+            raise ValueError("Conversation messages cannot be blank")
+        return self
+
+
+class QuestionInput(StrictModel):
+    question: QuestionText
+    history: Annotated[list[QuestionMessage], Field(max_length=12)] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def bounded_conversation(self):
+        if not self.question.strip() or len(self.history) % 2:
+            raise ValueError("Supply a question and complete conversation pairs")
+        if any(message.role != ("user" if index % 2 == 0 else "assistant")
+               for index, message in enumerate(self.history)):
+            raise ValueError("Conversation must alternate user and assistant")
+        if sum(len(message.content) for message in self.history) > 24000:
+            raise ValueError("Conversation context is too long")
+        return self
+
+
+class QuestionAnswer(StrictModel):
+    answer: ConversationText
+    response_id: str | None
+    citations: list[Citation]
+    knowledge_searched: Literal[True] = True
+
+    @model_validator(mode="after")
+    def meaningful_answer(self):
+        if not self.answer.strip():
+            raise ValueError("An answer cannot be blank")
+        return self
+
+
 class ImageComparison(StrictModel):
     image_id: str
     filename: str

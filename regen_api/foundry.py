@@ -52,6 +52,10 @@ def parse_response(response, evidence_received=None) -> AnalysisResult:
         raise AnalysisFailure("INVALID_ANALYSIS", "The agent returned an invalid analysis. Retry analysis.") from exc
     # Receipt truth belongs to the input boundary, not to model-generated prose.
     analysis = analysis.model_copy(update={"evidence_received": list(evidence_received or [])})
+    return AnalysisResult(analysis, getattr(response, "id", None), extract_citations(content))
+
+
+def extract_citations(content):
     citations = []
     seen = set()
     for part in content:
@@ -62,12 +66,12 @@ def parse_response(response, evidence_received=None) -> AnalysisResult:
             try:
                 parsed = urlsplit(url)
                 safe = parsed.scheme == "https" and bool(parsed.hostname) and not parsed.username
-            except ValueError:
+            except (ValueError, TypeError):
                 safe = False
             if safe and url not in seen:
                 citations.append(Citation(title=getattr(annotation, "title", None) or "Retrieved source", url=url))
                 seen.add(url)
-    return AnalysisResult(analysis, getattr(response, "id", None), citations)
+    return citations
 
 
 def image_input(image):
@@ -105,6 +109,7 @@ class FoundryGateway:
     def __init__(self, settings: Settings):
         self.settings = settings
         self._credential = self._project = self._client = None
+        self._question_tool = None
         self._lock = threading.Lock()
 
     def _get_client(self):
@@ -118,6 +123,26 @@ class FoundryGateway:
                     timeout=self.settings.timeout_seconds, max_retries=0,
                 )
         return self._client
+
+    def _get_question_tool(self):
+        with self._lock:
+            if self._question_tool is None:
+                from azure.ai.projects.models import (AISearchIndexResource, AzureAISearchQueryType,
+                    AzureAISearchTool, AzureAISearchToolResource)
+                connection = self._project.connections.get(self.settings.search_connection_name)
+                self._question_tool = AzureAISearchTool(azure_ai_search=AzureAISearchToolResource(
+                    indexes=[AISearchIndexResource(project_connection_id=connection.id,
+                        index_name=self.settings.search_index_name, query_type=AzureAISearchQueryType.SIMPLE)]
+                )).as_dict()
+            return self._question_tool
+
+    def ask(self, question):
+        from .questions import answer_question, question_failure
+        try:
+            client = self._get_client()
+            return answer_question(client, self.settings.question_model, self._get_question_tool(), question)
+        except Exception as exc:
+            raise question_failure(exc) from exc
 
     def analyze(self, description: str, images=None, on_image_assessment=None) -> AnalysisResult:
         try:
@@ -157,3 +182,4 @@ class FoundryGateway:
             if resource is not None:
                 resource.close()
         self._client = self._project = self._credential = None
+        self._question_tool = None

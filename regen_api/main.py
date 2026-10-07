@@ -13,9 +13,10 @@ from pydantic import ValidationError
 from starlette.concurrency import run_in_threadpool
 
 from .foundry import FoundryGateway
+from .questions import QuestionFailure
 from .images import MAX_UPLOAD_BODY_BYTES, UploadBodyLimitMiddleware, UploadFailure, upload_path
 from .schemas import (AttemptState, Recommendation, RetryInput, ReviewInput, RevisionInput,
-                      SubmissionInput, SubmissionPage, SubmissionRecord)
+                      SubmissionInput, SubmissionPage, SubmissionRecord, QuestionInput, QuestionAnswer)
 from .service import SubmissionService
 from .settings import Settings
 from .store import Conflict, NotFound, Store
@@ -91,7 +92,17 @@ def create_app(settings=None, gateway=None):
     @app.exception_handler(RequestValidationError)
     async def invalid_request(request, exc):
         # Never echo nonfinite numbers, coordinates, or user input in error bodies.
-        return JSONResponse({"detail": "Check required fields, fresh device coordinates, value types and limits, then retry."}, status_code=422)
+        detail = "Check the question and conversation limits, then retry." if request.url.path == "/api/questions" else \
+            "Check required fields, fresh device coordinates, value types and limits, then retry."
+        return JSONResponse({"detail": detail}, status_code=422)
+
+    @app.exception_handler(QuestionFailure)
+    async def question_error(request, exc):
+        return JSONResponse({"detail": exc.message, "code": exc.code}, status_code=502)
+
+    @app.post("/api/questions", response_model=QuestionAnswer)
+    def ask(input: QuestionInput):
+        return gateway.ask(input)
 
     async def validate_form(request, fields):
         form = await request.form()
