@@ -49,10 +49,10 @@ async function api(path, body) {
     {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)};
   let response;
   try { response = await fetch(path, options); }
-  catch { throw new Error("The server could not be reached. Refresh to check whether your activity or review was saved before trying again."); }
+  catch { throw new Error(path === "/api/questions" ? "The question service could not be reached. Your question is still in the composer; try again." : "The server could not be reached. Refresh to check whether your activity or review was saved before trying again."); }
   let data;
   try { data = await response.json(); }
-  catch { throw new Error("The server returned an unreadable response. Refresh to check the saved record."); }
+  catch { throw new Error(path === "/api/questions" ? "The answer could not be read. Your question is still in the composer; try again." : "The server returned an unreadable response. Refresh to check the saved record."); }
   if (!response.ok) {
     const message = typeof data.detail === "string" ? data.detail : "Check the required fields and text limits, then try again.";
     const error = new Error(message); error.status = response.status; throw error;
@@ -87,7 +87,7 @@ async function renderRoute() {
   cancelConfirmation();
   const sequence = ++routeSequence;
   const hash = location.hash.slice(1) || "submit";
-  const view = hash.startsWith("submission/") ? "detail" : hash === "history" ? "history" : hash === "queue" ? "queue" : "submit";
+  const view = hash.startsWith("submission/") ? "detail" : hash === "ask" ? "ask" : hash === "history" ? "history" : hash === "queue" ? "queue" : "submit";
   revisionPicker?.clear(); revisionPicker = null;
   if (view !== "submit") submissionPicker.suspend(); else submissionPicker.resume();
   document.querySelectorAll(".view").forEach((element) => { element.hidden = true; });
@@ -369,5 +369,6 @@ $("#confirmation-form").addEventListener("submit", async (event) => {
   event.preventDefault(); if (busy || !pendingReview) return;
   const {recordId, ...body} = pendingReview; cancelConfirmation(); await mutate("reviews", body, recordId);
 });
+const questionChat = new QuestionChat((...args) => api(...args));
 window.addEventListener("hashchange", renderRoute);
 renderRoute();

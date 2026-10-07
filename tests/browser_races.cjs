@@ -29,6 +29,7 @@ function harness() {
     createElement: (tag) => new Element(tag)}, window: {addEventListener() {}},
     location: {hash: "#submission/A"}, navigator:{}, Date, Promise, Error, setTimeout,clearTimeout, URLSearchParams, URL, FormData, File, console});
   const run = (code) => vm.runInContext(code, context);
+  if(fs.existsSync('regen_api/static/questions.js'))run(fs.readFileSync('regen_api/static/questions.js','utf8'));
   run(fs.readFileSync("regen_api/static/images.js", "utf8")); run(source);
   if(fs.existsSync('regen_api/static/location.js'))run(fs.readFileSync('regen_api/static/location.js','utf8'));
   return {element, run};
@@ -152,6 +153,9 @@ async function revisionLocationCannotChangeTarget(){
  await pending;assert.equal(h.run('posts.length'),0,'A location await must not post to the newly viewed record');
 }
 const checks = {refresh: refreshCannotRedirectReview, filters: latestFilterWins, confirmation: confirmationStaysBoundToRecord, image_draft: navigationRetainsImageDraft, image_comparison:imageComparisonIsVisibleAndSafe, location:submissionRequiresFreshLocation, location_denied:deniedLocationPreservesDraft, location_navigation:revisionLocationCannotChangeTarget};
-const check = checks[process.argv[2]];
-if (!check) throw new Error("Choose refresh, filters or confirmation");
-check().then(() => console.log(`PASS ${process.argv[2]}`)).catch((error) => { console.error(error); process.exitCode = 1; });
+module.exports = {harness};
+if (require.main === module) {
+  const check = checks[process.argv[2]];
+  if (!check) throw new Error("Choose a browser regression case");
+  check().then(() => console.log(`PASS ${process.argv[2]}`)).catch((error) => { console.error(error); process.exitCode = 1; });
+}
