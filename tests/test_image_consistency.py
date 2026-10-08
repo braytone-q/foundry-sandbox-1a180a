@@ -34,7 +34,7 @@ def descriptors(tmp_path, count=1):
     (("SUPPORTS", "SUPPORTS"), "SUPPORTS", "READY_FOR_HUMAN_REVIEW"),
 ])
 def test_image_inspection_cannot_be_overridden_by_ready_agent(tmp_path, verdicts, overall, wanted):
-    gateway = FoundryGateway(Settings());calls=[]
+    gateway = FoundryGateway(Settings(analysis_mode="single_agent"));calls=[]
     def call(**kw):
         calls.append(kw)
         return vision_response(verdicts) if "model" in kw else response()
@@ -61,7 +61,7 @@ def test_invalid_vision_coverage_fails_before_grounded_agent(tmp_path, kind):
     elif kind=="blank":d["images"][0]["visible_content"]=" "
     elif kind=="failed":r.status="incomplete"
     r.output_text="no JSON" if kind=="bad_json" else json.dumps(d)
-    calls=[];gateway=FoundryGateway(Settings())
+    calls=[];gateway=FoundryGateway(Settings(analysis_mode="single_agent"))
     gateway._client=NS(responses=NS(create=lambda **kw: calls.append(kw) or r))
     with pytest.raises(AnalysisFailure):gateway.analyze("Planted trees",descriptors(tmp_path,2))
     assert len(calls)==1
@@ -143,7 +143,7 @@ def test_restart_between_vision_and_search_keeps_completed_inspection(app_bundle
 
 
 def test_saved_agent_uses_supported_request_and_actual_receipt_strings(tmp_path):
-    gateway=FoundryGateway(Settings())
+    gateway=FoundryGateway(Settings(analysis_mode="single_agent"))
     def call(**kwargs):
         if 'model' in kwargs:return vision_response()
         # Foundry rejects runtime text-format overrides when agent_reference is supplied.

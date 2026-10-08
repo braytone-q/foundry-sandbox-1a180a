@@ -1,5 +1,9 @@
 # Re-gen Multiagent Implementation Plan
 
+Subsequent user instruction: multiagent is now the default. The original
+single_agent rollout default recorded in this completed plan is superseded;
+explicit single_agent configuration remains supported.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox syntax for tracking.
 
 **Goal:** Coordinate activity, evidence, and approved-rules specialists into an auditable report for human verification.

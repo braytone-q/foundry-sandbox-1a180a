@@ -76,12 +76,15 @@ def test_missing_or_incomplete_extraction_fails(kind):
 def test_mode_configuration(monkeypatch):
     monkeypatch.delenv('REGEN_ANALYSIS_MODE', raising=False)
     monkeypatch.delenv('REGEN_ACTIVITY_MODEL', raising=False)
-    assert Settings.from_env().analysis_mode == 'single_agent'
+    assert Settings().analysis_mode == 'multiagent'
+    assert Settings.from_env().analysis_mode == 'multiagent'
     assert Settings.from_env().activity_model == 'gpt-5-mini'
     monkeypatch.setenv('REGEN_ANALYSIS_MODE', 'multiagent')
     monkeypatch.setenv('REGEN_ACTIVITY_MODEL', 'activity-deployment')
     assert Settings.from_env().analysis_mode == 'multiagent'
     assert Settings.from_env().activity_model == 'activity-deployment'
+    monkeypatch.setenv('REGEN_ANALYSIS_MODE', 'single_agent')
+    assert Settings.from_env().analysis_mode == 'single_agent'
     monkeypatch.setenv('REGEN_ANALYSIS_MODE', 'bad-mode')
     with pytest.raises(ValueError):
         Settings.from_env()

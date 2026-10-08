@@ -54,10 +54,17 @@ No existing submissions or human review statuses were changed.
 
 ## Rollout
 
-Use `REGEN_ANALYSIS_MODE=multiagent ./run_api.sh` to opt in. The default remains
-single_agent; restart in that mode to roll back without losing stored traces.
+The user subsequently requested multiagent as the default. Start with
+`./run_api.sh`; use `REGEN_ANALYSIS_MODE=single_agent ./run_api.sh` to select the
+legacy pipeline explicitly without losing stored traces.
 Each provider request has its own existing timeout; the sequential attempt can
 take longer overall and incurs an additional extraction inference call.
+
+Default-mode follow-up validation: the configuration regression failed with the
+old single_agent default, then passed after the change. The 26 activity/coordinator
+tests passed with default gateway construction, and the full suite passed all
+217 tests in 64.59s. Legacy pipeline tests and controlled browser fixtures select
+single_agent explicitly.
 
 ## Independent review
 

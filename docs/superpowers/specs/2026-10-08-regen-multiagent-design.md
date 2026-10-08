@@ -1,5 +1,9 @@
 # Re-gen coordinator and specialist agents
 
+Default-mode update: after implementation and live validation, the user requested
+multiagent as the default. The earlier opt-in rollout decision below is superseded;
+single_agent remains an explicit environment override.
+
 ## Approved intent
 
 The user approved an application-level coordinator with activity, evidence,

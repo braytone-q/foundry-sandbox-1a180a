@@ -17,7 +17,7 @@ from tests.test_image_consistency import vision_response
 
 def test_twenty_saved_images_are_actual_response_inputs(tmp_path):
     calls = []
-    gateway = FoundryGateway(Settings())
+    gateway = FoundryGateway(Settings(analysis_mode="single_agent"))
     gateway._client = NS(responses=NS(create=lambda **kw: calls.append(kw) or (vision_response(("SUPPORTS",) * 20) if "model" in kw else response())))
     images = []
     for number in range(20):

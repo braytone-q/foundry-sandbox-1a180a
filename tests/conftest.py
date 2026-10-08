@@ -30,7 +30,7 @@ class ControlledGateway:
 @pytest.fixture
 def app_bundle(tmp_path):
     from regen_api.main import create_app
-    settings = replace(Settings(), database_path=tmp_path / "test.sqlite3")
+    settings = replace(Settings(analysis_mode="single_agent"), database_path=tmp_path / "test.sqlite3")
     gateway = ControlledGateway()
     app = create_app(settings, gateway)
     with TestClient(app, base_url="http://127.0.0.1") as client:

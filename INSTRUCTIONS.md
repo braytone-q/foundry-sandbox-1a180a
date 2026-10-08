@@ -330,7 +330,7 @@ included automatically.
 knowledge for questions (defaults `regen-verification-search-mi` and
 `regen-verification-index`). Use the configured approved source consistently.
 
-## Multiagent analysis (opt-in)
+## Multiagent analysis (default)
 
 The API can coordinate three bounded specialists: reported activity extraction,
 actual image inspection when images are supplied, and the existing Search-grounded
@@ -342,7 +342,7 @@ an activity. Unknown programme rules must be flagged, never invented.
 Start the local API with the existing Azure sign-in and Search configuration:
 
 ```bash
-REGEN_ANALYSIS_MODE=multiagent ./run_api.sh
+./run_api.sh
 ```
 
 `REGEN_ACTIVITY_MODEL` selects the activity extraction deployment (default
@@ -367,6 +367,6 @@ stages against the saved source revision and image manifest; earlier attempts
 remain in history. Historical and single-agent attempts have no orchestration
 trace. Trace storage uses an additive, nullable SQLite column.
 
-The default remains `single_agent`. To roll back the opt-in pipeline, restart
+The default is `multiagent`. To use the single-agent pipeline, restart
 with `REGEN_ANALYSIS_MODE=single_agent`; existing multiagent traces remain readable.
 No new Azure resources or Foundry-hosted workflows are needed.

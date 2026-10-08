@@ -21,4 +21,4 @@ class BrowserGateway(ControlledGateway):
 
 
 def create_app():
-    return real_app(replace(Settings(), database_path=Path("runtime/browser-qa.sqlite3")), BrowserGateway())
+    return real_app(replace(Settings(analysis_mode="single_agent"), database_path=Path("runtime/browser-qa.sqlite3")), BrowserGateway())

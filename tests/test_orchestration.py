@@ -19,7 +19,7 @@ def gateway_for(results):
         if isinstance(result, Exception):
             raise result
         return result
-    gateway = FoundryGateway(Settings(analysis_mode='multiagent'))
+    gateway = FoundryGateway(Settings())
     gateway._client = NS(responses=NS(create=call))
     return gateway, calls
 
@@ -115,7 +115,7 @@ def test_vision_failure_retains_activity_and_skips_rules(tmp_path):
 
 def test_single_agent_still_uses_only_grounded_call():
     calls = []
-    gateway = FoundryGateway(Settings())
+    gateway = FoundryGateway(Settings(analysis_mode='single_agent'))
     gateway._client = NS(responses=NS(create=lambda **kw: calls.append(kw) or response()))
     result = gateway.analyze('reported')
     assert len(calls) == 1 and calls[0]['tool_choice'] == 'required'
