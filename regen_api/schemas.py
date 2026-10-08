@@ -181,6 +181,25 @@ class ReviewSummary(StrictModel):
         return self
 
 
+class ActivityTotal(StrictModel):
+    """Reported quantities grouped by activity, reported place, and human status."""
+    activity_type: str | None
+    location: str | None
+    review_status: ReviewStatus
+    reported_quantity: Annotated[int | float, Field(ge=0)]
+    quantified_submissions: Annotated[int, Field(ge=0)]
+    unquantified_submissions: Annotated[int, Field(ge=0)]
+
+
+class ActivitySummary(StrictModel):
+    """Server-owned aggregates; no source text or device coordinates."""
+    captured_at: str
+    total_submissions: Annotated[int, Field(ge=0)]
+    analyzed_submissions: Annotated[int, Field(ge=0)]
+    unavailable_analysis_submissions: Annotated[int, Field(ge=0)]
+    totals: list[ActivityTotal]
+
+
 class ImageComparison(StrictModel):
     image_id: str
     filename: str

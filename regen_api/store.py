@@ -1,12 +1,13 @@
 """Durable source, analysis and human-review history for one local server."""
 import json
+import re
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from uuid import uuid4
 
 from .images import MAX_IMAGES, UploadFailure
-from .schemas import OrchestrationTrace, ReviewSummary
+from .schemas import ActivitySummary, ActivityTotal, Analysis, OrchestrationTrace, ReviewSummary
 
 
 class NotFound(Exception):
@@ -331,6 +332,39 @@ class Store:
             pending_human_review=pending, awaiting_clarification=clarification,
             approved=counts.get('APPROVED', 0), rejected=counts.get('REJECTED', 0),
             active_review_queue=pending + clarification)
+
+    def activity_summary(self) -> ActivitySummary:
+        """One latest-attempt snapshot per current submission; never count history twice."""
+        with self.connection() as db:
+            rows = db.execute("""SELECT s.review_status, a.state, a.analysis_json
+                FROM submissions s LEFT JOIN analysis_attempts a ON a.rowid=(
+                    SELECT rowid FROM analysis_attempts
+                    WHERE submission_id=s.id AND revision=s.current_revision
+                    ORDER BY rowid DESC LIMIT 1)""").fetchall()
+            captured_at = now()
+        groups = {}
+        analyzed = 0
+        for row in rows:
+            if row["state"] != "SUCCEEDED" or row["analysis_json"] is None:
+                continue
+            analysis = Analysis.model_validate(json.loads(row["analysis_json"]))
+            analyzed += 1
+            activity = re.sub(r"[\s-]+", "_", analysis.activity_type.strip().casefold()) if analysis.activity_type else None
+            location = " ".join(analysis.location.split()) if analysis.location else None
+            key = (activity or None, location.casefold() if location else None, row["review_status"])
+            if key not in groups:
+                groups[key] = {"activity_type": activity or None, "location": location or None,
+                    "review_status": row["review_status"], "reported_quantity": 0,
+                    "quantified_submissions": 0, "unquantified_submissions": 0}
+            group = groups[key]
+            if analysis.quantity is not None and analysis.quantity >= 0:
+                group["reported_quantity"] += analysis.quantity
+                group["quantified_submissions"] += 1
+            else:
+                group["unquantified_submissions"] += 1
+        return ActivitySummary(captured_at=captured_at, total_submissions=len(rows),
+            analyzed_submissions=analyzed, unavailable_analysis_submissions=len(rows) - analyzed,
+            totals=[ActivityTotal.model_validate(group) for group in groups.values()])
 
     def list(self, status=None, recommendation=None, analysis_state=None, limit=25, offset=0):
         conditions, params = [], []

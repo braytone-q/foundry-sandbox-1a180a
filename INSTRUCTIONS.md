@@ -277,6 +277,18 @@ programme Search or old chat answers. Individual source descriptions, reviewer
 notes, images and device coordinates are not included in the summary. A failed
 database read returns a sanitized storage error before any model call.
 
+Questions also receive read-only reported activity quantities grouped by activity
+type, reported place, and current human-review status. For example, Ask Re-gen can
+answer how many trees are recorded for Nanyuki and separate human-approved reports
+from pending, clarification-requested, and rejected reports. It uses only the latest
+successful current-revision attempt for each submission; if that latest attempt
+failed or is running, older analysis is not reused. Retries and revisions are never
+summed as extra activities. Missing or negative quantities are counted as unquantified
+records. An absent matching record is not evidence that no planting occurred.
+These are totals from this local dataset, not all planting in a town or independent
+proof of survival. Reported place labels are included in the aggregate; precise
+device coordinates, source descriptions, images, and reviewer notes are excluded.
+
 Ask Re-gen also receives a maintained briefing of the implemented project:
 its purpose, navigation screens, submission/review workflow, pixel inspection,
 image limits, required location capture, storage and current local-only scope.

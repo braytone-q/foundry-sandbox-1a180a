@@ -137,11 +137,12 @@ class FoundryGateway:
                 )).as_dict()
             return self._question_tool
 
-    def ask(self, question, review_summary=None):
+    def ask(self, question, review_summary=None, activity_summary=None):
         from .questions import answer_question, question_failure
         try:
             client = self._get_client()
-            return answer_question(client, self.settings.question_model, self._get_question_tool, question, review_summary)
+            return answer_question(client, self.settings.question_model, self._get_question_tool, question,
+                                   review_summary, activity_summary)
         except Exception as exc:
             raise question_failure(exc) from exc
 
