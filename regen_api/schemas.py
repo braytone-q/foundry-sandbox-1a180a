@@ -15,6 +15,23 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True, allow_inf_nan=False)
 
 
+class ActivityFacts(StrictModel):
+    activity_type: str | None
+    quantity: int | float | None
+    species: str | None
+    species_category: str | None
+    activity_date: str | None
+    location: str | None
+    community_group: str | None
+    evidence_reported: list[str]
+
+
+class ActivityExtraction(StrictModel):
+    facts: ActivityFacts
+    model: str
+    response_id: str | None
+
+
 class Analysis(StrictModel):
     activity_type: str | None
     quantity: int | float | None
