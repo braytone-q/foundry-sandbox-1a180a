@@ -176,6 +176,24 @@ function locationDetails(fix) {
   return box;
 }
 
+function renderOrchestrationTrace(trace) {
+  if (!trace) return null;
+  const box = node("details", null, "history-card");
+  box.append(node("summary", `Multiagent analysis · coordinator v${trace.coordinator_version}`),
+    node("p", "Specialist findings inform the final recommendation. A person makes the verification decision.", "field-help"));
+  for (const stage of trace.stages) {
+    const entry = node("section");
+    entry.append(node("h3", `${stage.role[0].toUpperCase()}${stage.role.slice(1)} specialist`),
+      node("p", stage.identity, "field-help"), badge(stage.state));
+    if (stage.response_id) entry.append(node("p", `Response: ${stage.response_id}`, "field-help"));
+    if (stage.state === "SKIPPED") entry.append(node("p", "No images supplied; image inspection skipped.", "field-help"));
+    if (stage.failure_code) entry.append(node("p", `Stage failed: ${stage.failure_code}`, "field-help"));
+    if (stage.findings) entry.append(node("pre", JSON.stringify(stage.findings, null, 2), "source-text"));
+    box.append(entry);
+  }
+  return box;
+}
+
 function renderDetail() {
   cancelConfirmation();
   revisionPicker?.clear(); revisionPicker = null;
@@ -229,6 +247,8 @@ function renderDetail() {
     if (attempt?.state === "FAILED" && !isFinal(record)) failure.append(button("Retry analysis ↻", () => mutate("analyze", {expected_version: record.version}), "primary"));
     ai.append(failure);
   }
+  const trace = renderOrchestrationTrace(attempt?.orchestration_trace);
+  if (trace) ai.append(trace);
   main.append(ai, historyCard(record));
   side.append(reviewCard(record));
   if (!isFinal(record)) side.append(revisionCard(record));
@@ -306,6 +326,10 @@ function historyCard(record) {
         if (value.image_ids.length) entry.append(imageGallery(record, value.image_ids));
       }
       if (heading === "ANALYSIS ATTEMPTS" && value.image_ids?.length) entry.append(renderImageAssessment(value.image_assessment, value.image_ids.length));
+      if (heading === "ANALYSIS ATTEMPTS") {
+        const trace = renderOrchestrationTrace(value.orchestration_trace);
+        if (trace) entry.append(trace);
+      }
       if (heading !== "HUMAN REVIEW EVENTS") entry.append(locationDetails(value.device_location));
     }
   }
