@@ -16,7 +16,9 @@ PROJECT_ENDPOINT = (
 AGENT_NAME = "regen"
 MODEL_DEPLOYMENT = "gpt-5-mini"
 
-SEARCH_CONNECTION_NAME = "regenverificationkb9h13ga"
+# Keyless connection to the service that contains regen-verification-index.
+# The previous connection targets regen-verification-kb, a different service.
+SEARCH_CONNECTION_NAME = "regen-verification-search-mi"
 SEARCH_INDEX_NAME = "regen-verification-index"
 
 credential = DefaultAzureCredential()
@@ -67,6 +69,15 @@ NEEDS_CLARIFICATION
 READY_FOR_HUMAN_REVIEW
 FLAG_FOR_REVIEW
 
+ACTIVITY CLASSIFICATION
+
+Classify the action explicitly reported, rather than inferring an action from
+the venue. "Planted seedlings" is tree_planting; "produced seedlings" is
+seedling_production; watering or caring for seedlings is nursery_maintenance.
+A nursery location alone does not mean seedlings were produced.
+Retrieve the rule for the reported action and do not substitute a rule for a
+different activity just because it mentions the same venue.
+
 KNOWLEDGE RULES
 
 The Azure AI Search knowledge source is the authoritative source for
@@ -116,6 +127,13 @@ CLARIFICATION RULES
 Ask only for the minimum information identified as required by the retrieved rule.
 
 Do not ask for optional information unless the retrieved rule explicitly requires it.
+
+When the retrieved rule requires a location, a generic venue description such
+as "the community nursery" without a name or place does not identify where
+the activity occurred. Preserve that reported description in location, mark
+the required location as missing, and ask only for the nursery name or place.
+A named location such as "Kiptapkei nursery" is sufficient; do not demand GPS
+coordinates or an address unless the retrieved rule explicitly requires them.
 
 OUTPUT
 

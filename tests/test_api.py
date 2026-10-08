@@ -1,5 +1,6 @@
 from tests.location_fixtures import fresh_location
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from types import SimpleNamespace
 
 import pytest
@@ -167,6 +168,42 @@ def test_local_origin_host_and_content_type_boundaries(client):
     assert client.post("/api/submissions", json={"device_location": fresh_location(), "description": "x"}, headers={"Origin": "http://127.0.0.1"}).status_code == 201
     assert client.post("/api/submissions", json={"device_location": fresh_location(), "description": "x", "decision": "APPROVE"}).status_code == 422
     assert client.get("/api/submissions/missing").status_code == 404
+
+
+def test_public_hosts_require_demo_credentials(app_bundle):
+    _, _, gateway, settings = app_bundle
+    from regen_api.main import create_app
+
+    public_settings = replace(settings, allowed_hosts=frozenset({"demo.example"}))
+    with pytest.raises(ValueError, match="Public hosts require demo username and password"):
+        create_app(public_settings, gateway)
+
+
+def test_public_demo_requires_auth_and_allows_only_configured_host(app_bundle):
+    _, _, gateway, settings = app_bundle
+    from regen_api.main import create_app
+
+    public_settings = replace(
+        settings,
+        allowed_hosts=frozenset({"demo.example"}),
+        demo_username="presenter",
+        demo_password="temporary-demo-password",
+    )
+    with TestClient(create_app(public_settings, gateway), base_url="https://demo.example") as public:
+        denied = public.get("/")
+        assert denied.status_code == 401
+        assert denied.headers["www-authenticate"].startswith("Basic ")
+        assert public.get("/", auth=("presenter", "incorrect-password")).status_code == 401
+        assert public.get("/", auth=("presenter", "temporary-demo-password")).status_code == 200
+        assert public.get("/api/health", headers={"Host": "attacker.example"},
+                          auth=("presenter", "temporary-demo-password")).status_code == 400
+        created = public.post(
+            "/api/submissions",
+            json={"device_location": fresh_location(), "description": "Class demo submission"},
+            headers={"Origin": "https://demo.example"},
+            auth=("presenter", "temporary-demo-password"),
+        )
+        assert created.status_code == 201, created.text
 
 
 def test_no_azure_call_is_needed_for_health_or_queue(app_bundle):

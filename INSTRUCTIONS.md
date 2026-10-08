@@ -57,6 +57,45 @@ You can keep working locally on VS Code Desktop by clicking "Continue On Desktop
 - Move the file from your Downloads folder to the local git repo directory
 - For Windows, you will need to rename the file back to .env using right-click "Rename..."
 
+## Re-gen Search setup
+
+Use the project SDK environment and the separately installed Azure CLI:
+
+```bash
+source .venv/bin/activate
+export PATH="$PWD/.venv/azure-cli/bin:$PATH"
+export AZURE_CONFIG_DIR="$PWD/.venv/azure-config"
+```
+
+If a session expires, use `az login --tenant 4fdb2788-8d68-473f-8248-de04e7e24cd9`.
+This tenant blocks device-code sign-in through security defaults; use browser sign-in.
+
+`connect_search_agent.py` uses `regen-verification-search-mi`, a `CognitiveSearch`
+connection with `authType: AAD` targeting `https://regen-search-veloking45.search.windows.net`.
+The connection payload is saved in `search_connection.json` and contains no keys.
+The old connection, `regenverificationkb9h13ga`, targets a different Search service.
+
+The **project** system-assigned identity is `5ea6f9c7-b876-4ba8-bd03-510b5a9aeecf`.
+It has Search Index Data Contributor and Search Service Contributor scoped to
+`regen-search-veloking45`. The account identity `b7283e6c-4abf-4839-83e0-3b1100a1ef72`
+is separate; assigning roles only to that account identity did not resolve runtime access.
+
+The tool uses explicit `SIMPLE` queries against the original seven-document text index.
+Live retrieval succeeded without a vector field or index migration. Keep this query type
+explicit: the documented default is `vector_semantic_hybrid`, which requires vector setup.
+See [Microsoft's Search tool guide](https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/tools/ai-search?view=foundry).
+
+Creating a new agent version does not update the pinned version in `run_agent.py`.
+Test the version printed by `connect_search_agent.py` before changing that pin:
+
+```bash
+python verify_agent.py --version <new-version>
+```
+
+This runs three live model calls and checks Search use, the JSON schema, the nursery
+location clarification, planting classification, reported-only photos, and the
+unknown-activity review recommendation.
+
 ## More examples
 
 Check out [Azure AI Projects client library for Python](https://github.com/Azure/azure-sdk-for-python/blob/main/sdk/ai/azure-ai-projects/README.md) for more information on using this SDK.
@@ -132,14 +171,17 @@ request timeout and no automatic SDK retries; credential acquisition can add tim
 Settings are environment variables: `REGEN_PROJECT_ENDPOINT`, `REGEN_AGENT_NAME`,
 `REGEN_AGENT_VERSION`, `REGEN_DATABASE_PATH`, `REGEN_REQUEST_TIMEOUT_SECONDS`
 (positive and at most 600), and `REGEN_PORT` (launch port, default 8000).
+For the protected cloud demo, use `REGEN_ALLOWED_HOSTS`,
+`REGEN_DEMO_USERNAME`, and `REGEN_DEMO_PASSWORD` as documented below.
 Keep the existing working agent and Search setup unless deliberately testing a
 new version. Runtime records contain submitted text and are excluded from Git;
 back up both the SQLite file and its sibling `evidence/` directory with the
 server stopped. The originals and image associations must be restored together.
 
-This is a trusted single-operator local prototype. Keep the loopback binding.
-Shared hosting, authenticated submitter/verifier roles, rewards,
-reopening final reviews, and cloud deployment belong to later phases.
+This remains a trusted single-operator prototype, not a production service.
+Keep loopback binding for local use. A temporary, password-protected class demo
+deployment is documented below; it does not provide individual submitter or
+verifier identities, role separation, rewards, or reopening final reviews.
 
 Offline verification:
 
@@ -341,6 +383,60 @@ included automatically.
 `REGEN_SEARCH_CONNECTION_NAME` and `REGEN_SEARCH_INDEX_NAME` select approved
 knowledge for questions (defaults `regen-verification-search-mi` and
 `regen-verification-index`). Use the configured approved source consistently.
+
+## Temporary password-protected class demo (Azure Container Apps)
+
+The app can be containerized for a short class presentation. All pages and API
+routes use the same HTTP Basic username and password; anyone given those
+credentials can submit activities and record human review decisions. Reviewer
+names are still self-reported, not authenticated identities. This is a shared
+demo login, not production access control.
+
+The container listens on port 8000 and trusts only the exact hostname configured
+in `REGEN_ALLOWED_HOSTS`. A public hostname without both demo credentials is
+rejected at startup. The password must be stored as a Container App secret, not
+in Git, the Docker image, or a command saved in shell history. Use HTTPS and
+share the URL and password privately.
+
+1. Confirm the Azure subscription and region, then sign in with Azure CLI.
+2. From the repository root, build and create the app from the included
+   `Dockerfile`, for example:
+
+   ```bash
+   az containerapp up --source . --name regen-class-demo \
+     --resource-group regen-class-demo-rg --location eastus \
+     --ingress external --target-port 8000
+   ```
+
+   Choose a region available to your subscription. The command may create
+   supporting resources, including a container registry; check their pricing
+   before proceeding.
+3. In the Azure portal, enable a system-assigned identity for the Container
+   App. Have an administrator grant that identity the required Foundry project
+   role to invoke the existing agent. The agent's configured Search connection
+   continues to use its existing identity.
+4. In the Container App's **Secrets and environment variables**, add a
+   `demo-password` secret, then set `REGEN_DEMO_USERNAME` and set
+   `REGEN_DEMO_PASSWORD` to reference that secret. Set
+   `REGEN_ALLOWED_HOSTS` to the app's exact FQDN (hostname only, no scheme or
+   path), and set `REGEN_DATABASE_PATH=/data/regen.sqlite3`. Keep
+   `REGEN_PROJECT_ENDPOINT`, agent name/version, and Search settings pointed at
+   the existing approved Foundry project. The app restarts with the new
+   configuration; the public URL should then challenge for credentials.
+5. Before accepting real submissions or evidence, configure a persistent
+   Azure Files volume mounted at `/data` and keep the Container App to one
+   replica. The database and original evidence images share that mounted
+   directory. Without persistent storage, container restarts/redeployments can
+   erase submissions and uploads. Do not treat this demo setup as a backup.
+6. After the presentation, delete the Container App and any supporting
+   resources you no longer need.
+
+Azure Container Apps' Consumption plan currently includes monthly free grants
+for a bounded amount of CPU, memory, and requests and can scale to zero.
+Exceeding those grants, the container registry, persistent file storage, and
+the existing Foundry/model/Search services may still incur charges. Free hosting
+does not make AI inference or evidence storage free; review the Azure cost
+estimate and billing alerts before deploying.
 
 ## Multiagent analysis (default)
 

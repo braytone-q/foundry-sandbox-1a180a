@@ -1,0 +1,7 @@
+{
+  "properties": {
+    "category": "CognitiveSearch",
+    "target": "https://regen-search-veloking45.search.windows.net",
+    "authType": "AAD"
+  }
+}

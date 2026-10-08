@@ -9,7 +9,7 @@ project_client = AIProjectClient(
 )
 
 my_agent = "regen"
-my_version = "9"
+my_version = "11"
 
 openai_client = project_client.get_openai_client()
 

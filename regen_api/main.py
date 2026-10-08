@@ -1,5 +1,8 @@
-import sqlite3
+import base64
+import binascii
 import json
+import secrets
+import sqlite3
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Literal
@@ -18,12 +21,14 @@ from .images import MAX_UPLOAD_BODY_BYTES, UploadBodyLimitMiddleware, UploadFail
 from .schemas import (AttemptState, Recommendation, RetryInput, ReviewInput, RevisionInput,
                       SubmissionInput, SubmissionPage, SubmissionRecord, QuestionInput, QuestionAnswer)
 from .service import SubmissionService
-from .settings import Settings
+from .settings import LOCAL_HOSTS, Settings
 from .store import Conflict, NotFound, Store
 
 
 def create_app(settings=None, gateway=None):
     settings = settings or Settings.from_env()
+    if settings.allowed_hosts - LOCAL_HOSTS and not (settings.demo_username and settings.demo_password):
+        raise ValueError("Public hosts require demo username and password")
     gateway = gateway or FoundryGateway(settings)
     store = Store(settings.database_path)
     service = SubmissionService(store, gateway, settings)
@@ -42,13 +47,34 @@ def create_app(settings=None, gateway=None):
     app.state.store, app.state.service = store, service
 
     @app.middleware("http")
-    async def local_boundary(request: Request, call_next):
+    async def request_boundary(request: Request, call_next):
         try:
             host = urlsplit("//" + request.headers.get("host", "")).hostname
         except ValueError:
             host = None
-        if host not in {"localhost", "127.0.0.1", "::1"}:
-            return JSONResponse({"detail": "Use a localhost address."}, status_code=400)
+        if host is None or host.lower() not in settings.allowed_hosts:
+            return JSONResponse({"detail": "Host is not allowed."}, status_code=400)
+        if settings.demo_username and settings.demo_password:
+            scheme, _, token = request.headers.get("authorization", "").partition(" ")
+            try:
+                credentials = base64.b64decode(token, validate=True).decode("utf-8")
+            except (binascii.Error, UnicodeDecodeError, ValueError):
+                credentials = ""
+            username, separator, password = credentials.partition(":")
+            if (
+                scheme.lower() != "basic"
+                or not separator
+                or not secrets.compare_digest(username.encode("utf-8"), settings.demo_username.encode("utf-8"))
+                or not secrets.compare_digest(password.encode("utf-8"), settings.demo_password.encode("utf-8"))
+            ):
+                return JSONResponse(
+                    {"detail": "Authentication required."},
+                    status_code=401,
+                    headers={
+                        "WWW-Authenticate": 'Basic realm="Re-gen class demo", charset="UTF-8"',
+                        "Cache-Control": "no-store",
+                    },
+                )
         if request.method in {"POST", "PUT", "PATCH", "DELETE"}:
             origin = request.headers.get("origin")
             if (origin and origin != f"{request.url.scheme}://{request.headers['host']}") or request.headers.get("sec-fetch-site") == "cross-site":
