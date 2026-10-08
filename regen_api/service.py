@@ -9,8 +9,12 @@ class SubmissionService:
     def _analyze(self, attempt):
         # Source and RUNNING state are already committed; never hold a DB lock across Azure.
         try:
+            callbacks = {}
+            if self.settings.analysis_mode == "multiagent":
+                callbacks["on_orchestration_trace"] = lambda trace: self.store.save_orchestration_trace(attempt["attempt_id"], trace)
             result = self.gateway.analyze(attempt["description"], attempt["images"],
-                on_image_assessment=lambda assessment: self.store.save_image_assessment(attempt["attempt_id"], assessment))
+                on_image_assessment=lambda assessment: self.store.save_image_assessment(attempt["attempt_id"], assessment),
+                **callbacks)
         except Exception as exc:
             self.store.finish_attempt(attempt["attempt_id"], failure=safe_failure(exc))
         else:

@@ -239,6 +239,7 @@ class Attempt(StrictModel):
     citations: list[Citation]
     image_ids: list[str] = Field(default_factory=list)
     image_assessment: ImageAssessment | None = None
+    orchestration_trace: OrchestrationTrace | None = None
     device_location: DeviceLocation | None = None
 
 

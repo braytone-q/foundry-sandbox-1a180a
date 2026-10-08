@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from .images import MAX_IMAGES, UploadFailure
-from .schemas import ReviewSummary
+from .schemas import OrchestrationTrace, ReviewSummary
 
 
 class NotFound(Exception):
@@ -89,6 +89,8 @@ class Store:
                 db.execute(statement)
             if "image_assessment_json" not in {r[1] for r in db.execute("PRAGMA table_info(analysis_attempts)")}:
                 db.execute("ALTER TABLE analysis_attempts ADD COLUMN image_assessment_json TEXT")
+            if "orchestration_trace_json" not in {r[1] for r in db.execute("PRAGMA table_info(analysis_attempts)")}:
+                db.execute("ALTER TABLE analysis_attempts ADD COLUMN orchestration_trace_json TEXT")
 
     def _submission(self, db, id):
         row = db.execute("SELECT * FROM submissions WHERE id=?", (id,)).fetchone()
@@ -216,6 +218,17 @@ class Store:
             db.execute("UPDATE analysis_attempts SET image_assessment_json=? WHERE id=?",
                        (assessment.model_dump_json(), attempt_id))
 
+    def save_orchestration_trace(self, attempt_id: str, trace: OrchestrationTrace) -> None:
+        """Persist a completed stage snapshot without a transaction across model calls."""
+        with self.connection(True) as db:
+            attempt = db.execute("SELECT state FROM analysis_attempts WHERE id=?", (attempt_id,)).fetchone()
+            if attempt is None:
+                raise NotFound("Analysis attempt not found.")
+            if attempt["state"] != "RUNNING":
+                raise Conflict("This analysis attempt has already finished.")
+            db.execute("UPDATE analysis_attempts SET orchestration_trace_json=? WHERE id=?",
+                       (trace.model_dump_json(), attempt_id))
+
     def finish_attempt(self, attempt_id, result=None, failure=None):
         if (result is None) == (failure is None):
             raise ValueError("Provide one result or failure")
@@ -236,6 +249,9 @@ class Store:
                        (timestamp, attempt["submission_id"]))
             db.execute("UPDATE analysis_attempts SET image_assessment_json=COALESCE(image_assessment_json, ?) WHERE id=?",
                 (result.image_assessment.model_dump_json() if result and result.image_assessment else None, attempt_id))
+            if result and result.orchestration_trace is not None:
+                db.execute("UPDATE analysis_attempts SET orchestration_trace_json=? WHERE id=?",
+                           (result.orchestration_trace.model_dump_json(), attempt_id))
 
     def review(self, id, input):
         with self.connection(True) as db:
@@ -281,11 +297,13 @@ class Store:
         record["description"] = record["revisions"][-1]["description"]
         attempts = []
         for r in db.execute("""SELECT id, revision, state, started_at, finished_at, agent_name,
-            agent_version, response_id, analysis_json, failure_code, failure_message, citations_json, image_assessment_json
+            agent_version, response_id, analysis_json, failure_code, failure_message, citations_json,
+            image_assessment_json, orchestration_trace_json
             FROM analysis_attempts WHERE submission_id=? ORDER BY rowid DESC""", (id,)):
             attempt = dict(r)
             attempt["analysis"] = json.loads(attempt.pop("analysis_json") or "null")
             attempt["image_assessment"] = json.loads(attempt.pop("image_assessment_json") or "null")
+            attempt["orchestration_trace"] = json.loads(attempt.pop("orchestration_trace_json") or "null")
             attempt["citations"] = json.loads(attempt.pop("citations_json"))
             attempt["image_ids"] = image_ids[attempt["revision"]]
             attempt["device_location"] = locations[attempt["revision"]]
