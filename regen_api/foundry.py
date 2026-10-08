@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 from pydantic import ValidationError
 from PIL import Image, ImageOps
 
-from .schemas import Analysis, Citation, ImageAssessment
+from .schemas import Analysis, Citation, ImageAssessment, OrchestrationTrace
 from .settings import Settings
 
 
@@ -25,6 +25,7 @@ class AnalysisResult:
     response_id: str | None = None
     citations: list[Citation] = field(default_factory=list)
     image_assessment: ImageAssessment | None = None
+    orchestration_trace: OrchestrationTrace | None = None
 
 
 def parse_response(response, evidence_received=None) -> AnalysisResult:
@@ -144,7 +145,12 @@ class FoundryGateway:
         except Exception as exc:
             raise question_failure(exc) from exc
 
-    def analyze(self, description: str, images=None, on_image_assessment=None) -> AnalysisResult:
+    def analyze(self, description: str, images=None, on_image_assessment=None,
+                on_orchestration_trace=None) -> AnalysisResult:
+        if self.settings.analysis_mode == "multiagent":
+            from .orchestration import coordinate_analysis
+            return coordinate_analysis(self, description, images or [], on_image_assessment,
+                                       on_orchestration_trace)
         try:
             from .vision import apply_image_assessment, inspect_images
             images = images or []

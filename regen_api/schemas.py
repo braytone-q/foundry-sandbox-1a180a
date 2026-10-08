@@ -197,6 +197,33 @@ class ImageAssessment(StrictModel):
     images: list[ImageComparison]
 
 
+class SpecialistStage(StrictModel):
+    role: Literal["activity", "evidence", "rules"]
+    identity: str
+    response_id: str | None
+    state: Literal["SUCCEEDED", "FAILED", "SKIPPED"]
+    findings: ActivityFacts | ImageAssessment | Analysis | None
+    failure_code: str | None = None
+
+    @model_validator(mode="after")
+    def coherent_stage(self):
+        expected = {"activity": ActivityFacts, "evidence": ImageAssessment, "rules": Analysis}[self.role]
+        if self.state == "SUCCEEDED":
+            if not isinstance(self.findings, expected) or self.failure_code is not None:
+                raise ValueError("A successful stage requires its typed findings")
+        elif self.findings is not None or self.response_id is not None:
+            raise ValueError("Uncompleted stages cannot claim findings or a response")
+        if (self.state == "FAILED") != (self.failure_code is not None):
+            raise ValueError("Only failed stages carry failure codes")
+        return self
+
+
+class OrchestrationTrace(StrictModel):
+    coordinator_version: Literal["1"] = "1"
+    mode: Literal["multiagent"] = "multiagent"
+    stages: list[SpecialistStage]
+
+
 class Attempt(StrictModel):
     id: str
     revision: int
